@@ -1,0 +1,841 @@
+:root {
+  /* 手机区域尺寸：修改 360px 可调整大屏幕下的最大宽度 */
+  --phone-max-width: 360px;
+  --phone-scale: 1.15;
+  --popup-scale: 0.8;
+  --popup-max-width: 320px;
+  --popup-padding: 20px 16px 16px;
+  --page-padding: 16px;
+  --page-space: 32px;
+  --transition-time: 300ms;
+  --escape-pulse-scale: 1.12;
+  --escape-pulse-duration: 1.5s;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+button,
+canvas {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow: hidden;
+  background: #ffffff;
+  color: #111111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.page {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--page-padding);
+  place-items: center;
+}
+
+/* 正式手机素材比例 900:1280，完整展示，不裁切。 */
+.phone-screen {
+  position: relative;
+  width: min(
+    calc(var(--phone-max-width) * var(--phone-scale)),
+    calc(100vw - var(--page-space)),
+    calc((100vh - var(--page-space)) * 900 / 1280)
+  );
+  width: min(
+    calc(var(--phone-max-width) * var(--phone-scale)),
+    calc(100vw - var(--page-space)),
+    calc((100dvh - var(--page-space)) * 900 / 1280)
+  );
+  aspect-ratio: 900 / 1280;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.phone-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.phone-art--after { opacity: 0; }
+.page[data-state="modalOpen"] .phone-art--before { opacity: 0; }
+.page[data-state="modalOpen"] .phone-art--after {
+  opacity: 1;
+  filter: none;
+}
+
+/* 灰色图片占位 */
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #b8b8b8;
+}
+
+/* 消息弹窗 */
+.message-modal {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: min(var(--popup-max-width), calc(100% - 40px));
+  padding: var(--popup-padding);
+  translate: -50% -50%;
+  scale: calc(var(--popup-scale) * 0.95);
+  border: 1px solid #222222;
+  background: #ffffff;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-time) ease,
+    scale var(--transition-time) ease,
+    visibility 0s linear var(--transition-time);
+}
+
+.message-modal p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.modal-actions button {
+  min-height: 38px;
+  border: 1px solid #222222;
+  background: #eeeeee;
+  color: #111111;
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal-actions button:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 2px;
+}
+
+/* modalOpen 状态：遮罩渐暗，弹窗淡入并轻微放大 */
+.page[data-state="modalOpen"] .message-modal {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+.page[data-state="modalOpen"] .message-modal {
+  scale: var(--popup-scale);
+}
+
+/* 第一章出口快照只在跨章淡化期间可见，不改变第二章内部样式。 */
+.cube-scene.is-ch1-exiting {
+  visibility: visible;
+  pointer-events: none;
+}
+
+/* 1B：全屏 Glitch 覆盖层 */
+.glitch-overlay,
+.cube-scene,
+.chapter2-scene,
+.chapter2-complete,
+.chapter3-scene {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.glitch-overlay {
+  z-index: 100;
+  background: #f4f4f4;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page[data-state="glitch"] .glitch-overlay {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: all;
+}
+
+.page[data-state="glitch"] .phone-screen,
+.page[data-state="cubeScene"] .phone-screen,
+.page[data-state="escapeAvailable"] .phone-screen,
+.page[data-state="chapterOneComplete"] .phone-screen {
+  visibility: hidden;
+}
+
+/* 被破坏的手机画面残影，只使用黑白灰 */
+.glitch-phone-echo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(360px, calc(100vw - 32px), calc(56.25vh - 18px));
+  aspect-ratio: 9 / 16;
+  translate: -50% -50%;
+  background: #a9a9a9;
+  opacity: 0.75;
+}
+
+.glitch-tears,
+.glitch-pixels,
+.glitch-noise,
+.glitch-final-cut {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* 横向画面撕裂 */
+.glitch-tear {
+  position: absolute;
+  left: -8vw;
+  width: 116vw;
+  background: linear-gradient(
+    90deg,
+    #111111 0 9%,
+    #dedede 9% 30%,
+    #ffffff 30% 53%,
+    #777777 53% 76%,
+    #1c1c1c 76% 78%,
+    #f5f5f5 78% 100%
+  );
+  opacity: 0.9;
+}
+
+/* 局部像素错位 */
+.glitch-pixel {
+  position: absolute;
+  border: 1px solid #222222;
+  background: #b3b3b3;
+}
+
+/* 随机矩形噪点 */
+.glitch-noise-block {
+  position: absolute;
+  background: #111111;
+}
+
+/* 最后约 0.3 秒的明显信号中断，不使用全屏闪白 */
+.glitch-final-cut {
+  background: repeating-linear-gradient(
+    0deg,
+    #111111 0 7px,
+    #eeeeee 7px 15px,
+    #777777 15px 21px,
+    transparent 21px 36px
+  );
+  opacity: 0;
+}
+
+.page[data-state="glitch"] .glitch-final-cut {
+  animation: final-signal-cut var(--glitch-duration) steps(1, end) both;
+}
+
+@keyframes final-signal-cut {
+  0%,
+  87% {
+    opacity: 0;
+    translate: 0 0;
+  }
+
+  88%,
+  94% {
+    opacity: 0.82;
+    translate: -3vw 0;
+  }
+
+  95%,
+  100% {
+    opacity: 0.95;
+    translate: 4vw 0;
+  }
+}
+
+/* 1B：立方体画布铺满浏览器 */
+.cube-scene {
+  z-index: 10;
+  background: #f7f7f5;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page[data-state="cubeScene"] .cube-scene,
+.page[data-state="escapeAvailable"] .cube-scene {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#cube-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+/* 远端门附近的唯一强调色按钮 */
+.escape-button {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  min-width: 52px;
+  min-height: 42px;
+  padding: 8px 14px;
+  translate: -50% -50%;
+  scale: 0.94;
+  border: 2px solid #840000;
+  background: #e00000;
+  color: #ffffff;
+  font: 700 22px/1 Arial, Helvetica, sans-serif;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  cursor: pointer;
+  transition:
+    opacity 450ms ease,
+    scale 450ms ease,
+    visibility 0s linear 450ms;
+}
+
+.page[data-state="escapeAvailable"] .escape-button {
+  scale: 1;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  animation:
+    escape-appear 550ms ease-out both,
+    escape-pulse var(--escape-pulse-duration) ease-in-out 550ms infinite;
+  transition: none;
+}
+
+.escape-button:focus-visible {
+  outline: 3px solid #e00000;
+  outline-offset: 3px;
+}
+
+@keyframes escape-appear {
+  from {
+    scale: 0.85;
+    opacity: 0;
+  }
+
+  to {
+    scale: 1;
+    opacity: 1;
+  }
+}
+
+@keyframes escape-pulse {
+  0%,
+  100% {
+    scale: 1;
+    opacity: 0.78;
+  }
+
+  50% {
+    scale: var(--escape-pulse-scale);
+    opacity: 1;
+  }
+}
+
+/* 点击“逃”后的开发占位状态 */
+.chapter-complete {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.chapter-complete p {
+  margin: 0;
+  color: #111111;
+  font-size: clamp(20px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.page[data-state="chapterOneComplete"] .chapter-complete {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 2A：独立的全屏 360° 场景 */
+.chapter2-scene {
+  z-index: 210;
+  background: #ededeb;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page[data-state="chapter2"] .chapter2-scene {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#chapter2-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  opacity: 1;
+  transition: opacity var(--scene-fade-duration, 900ms) ease;
+}
+
+#chapter2-canvas.is-dragging {
+  cursor: grabbing;
+}
+
+/* 2D 结尾使用纯白平面层，与圆柱卧室做柔和交叉渐隐。 */
+.chapter2-flat-background {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--scene-fade-duration, 900ms) ease;
+}
+
+.chapter2-scene.is-scene-fading #chapter2-canvas,
+.chapter2-scene.is-flat-2d #chapter2-canvas {
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chapter2-scene.is-scene-fading .chapter2-flat-background,
+.chapter2-scene.is-flat-2d .chapter2-flat-background {
+  opacity: 1;
+}
+
+/* 视觉光标只由键盘控制，不接收真实鼠标事件 */
+.virtual-cursor {
+  position: fixed;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  width: var(--virtual-cursor-size, 40px);
+  height: var(--virtual-cursor-size, 40px);
+  pointer-events: none;
+  transition: opacity 280ms ease;
+}
+
+.virtual-cursor.is-finale-hidden {
+  opacity: 0;
+}
+
+.virtual-cursor-marker {
+  position: absolute;
+  inset: 0;
+  background: url("./pic/second/button_icon3.png") left top / contain no-repeat;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.95));
+}
+
+.virtual-cursor.is-aiming .virtual-cursor-marker {
+  filter:
+    contrast(1.35)
+    drop-shadow(0 0 3px rgba(255, 255, 255, 1));
+}
+
+.collected-fragments {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  color: #111111;
+  font: 900 19px/1.15 Arial, "Microsoft YaHei", sans-serif;
+  text-align: center;
+  text-shadow:
+    -1px -1px 0 #ffffff,
+    1px -1px 0 #ffffff,
+    -1px 1px 0 #ffffff,
+    1px 1px 0 #ffffff;
+  transition: opacity var(--text-fade-duration, 1200ms) ease
+    var(--text-fade-delay, 100ms);
+}
+
+.collected-character {
+  position: absolute;
+  display: grid;
+  width: 1.2em;
+  height: 1.2em;
+  translate: -50% -50%;
+  place-items: center;
+  min-width: 1em;
+  white-space: nowrap;
+  opacity: 0;
+  scale: 0.84;
+  animation: character-join 180ms ease-out forwards;
+}
+
+@keyframes character-join {
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* 2D：小人、火车和气泡位于纯白屏幕空间，不再依赖圆柱背景。 */
+.chapter2-finale {
+  /* 三张素材原图均为 512×512；仅当视口放不下时等比缩小。 */
+  --character-width: min(512px, calc(100vw - 24px), calc(100vh - 24px));
+  --character-left: 50%;
+  --train-width: min(512px, calc(100vw - 24px), calc(100vh - 24px));
+  --bubble-left: 58%;
+  --bubble-top-base: clamp(90px, 20vh, 190px);
+  --bubble-offset-y: -80px;
+  --board-crossfade-duration: 240ms;
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.chapter2-finale.is-active {
+  visibility: visible;
+}
+
+.finale-character,
+.finale-train,
+.finale-boarded {
+  position: absolute;
+  display: block;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.finale-character {
+  z-index: 2;
+  left: var(--character-left);
+  top: 50%;
+  width: var(--character-width);
+  translate: -50% -50%;
+  scale: 0.96;
+  opacity: 0;
+  transition:
+    opacity 450ms ease,
+    scale 450ms ease;
+}
+
+.finale-character.is-visible {
+  scale: 1;
+  opacity: 1;
+}
+
+.finale-train,
+.finale-boarded {
+  z-index: 1;
+  left: 0;
+  top: 50%;
+  width: var(--train-width);
+  translate: 0 -50%;
+  opacity: 0;
+  will-change: transform;
+}
+
+.finale-train.is-visible,
+.finale-boarded.is-visible {
+  opacity: 1;
+}
+
+.finale-train,
+.finale-boarded {
+  transition-property: opacity;
+  transition-duration: var(--board-crossfade-duration);
+  transition-timing-function: ease;
+}
+
+.boarding-bubble {
+  position: absolute;
+  z-index: 3;
+  left: var(--bubble-left);
+  top: max(16px, calc(var(--bubble-top-base) + var(--bubble-offset-y)));
+  width: min(360px, calc(100vw - 32px));
+  padding: 15px 18px 12px;
+  translate: -50% 8px;
+  scale: 0.96;
+  border: 1px solid #181818;
+  border-radius: 18px;
+  background: rgba(250, 250, 248, 0.96);
+  color: #111111;
+  opacity: 0;
+  transition:
+    opacity 320ms ease,
+    translate 320ms ease,
+    scale 160ms ease;
+}
+
+.boarding-bubble::after {
+  position: absolute;
+  right: 28%;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  rotate: 45deg;
+  border-right: 1px solid #181818;
+  border-bottom: 1px solid #181818;
+  background: #fafaf8;
+  content: "";
+}
+
+.boarding-bubble.is-visible {
+  translate: -50% 0;
+  scale: 1;
+  opacity: 1;
+}
+
+.boarding-bubble.is-holding {
+  scale: 1.02;
+}
+
+.boarding-bubble p {
+  margin: 0;
+  font: 500 clamp(15px, 1.6vw, 19px)/1.55 Arial, "Microsoft YaHei", sans-serif;
+  text-align: center;
+}
+
+.boarding-bubble-main,
+.boarding-bubble-hint {
+  display: block;
+}
+
+.boarding-bubble-hint {
+  margin-top: 2px;
+  font-size: 0.84em;
+}
+
+.boarding-progress {
+  height: 3px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #d3d3d3;
+}
+
+.boarding-progress span {
+  display: block;
+  width: var(--boarding-progress, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: #111111;
+}
+
+.chapter2-complete {
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chapter2-complete p {
+  margin: 0;
+  color: #111111;
+  font-size: clamp(20px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.page[data-state="chapter2Complete"] .chapter2-complete {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 3A：Canvas 珠帘在前，独立媒体容器在后，方便 3B 接入视频。 */
+.chapter3-scene {
+  z-index: 230;
+  background: #f2f2f0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page[data-state="chapter3"] .chapter3-scene {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.scene3-media-layer {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: #f2f2f0;
+  pointer-events: none;
+}
+
+.chapter3-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.bird-flight-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bird-flight-layer--rear {
+  z-index: 0;
+}
+
+.bird-flight-layer--front {
+  z-index: 2;
+}
+
+.flying-bird {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  height: auto;
+  opacity: 0;
+  transform-origin: center;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+#curtain-canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #f4f5f3 url("./pic/third/帘子2.png") center / cover no-repeat;
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--curtain-exit-duration, 720ms) ease,
+    transform var(--curtain-exit-duration, 720ms) ease;
+  pointer-events: none;
+}
+
+#curtain-canvas.is-ready {
+  background: transparent;
+}
+
+.curtain-input-layer {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.curtain-input-layer.is-dragging {
+  cursor: grabbing;
+}
+
+.space-enter-hint {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  padding: 7px 12px;
+  color: #111;
+  background: rgb(255 255 255 / 78%);
+  border: 1px solid rgb(0 0 0 / 42%);
+  border-radius: 999px;
+  font: 500 14px/1.2 Arial, "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.08em;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: space-enter-breathe var(--space-hint-fade, 1800ms) ease-in-out infinite;
+  transition: opacity 320ms ease, transform 320ms ease;
+  pointer-events: none;
+}
+
+.chapter3-scene[data-phase="enteringVideo"] #curtain-canvas,
+.chapter3-scene[data-phase="videoExperience"] #curtain-canvas {
+  opacity: 0;
+  transform: scale(1.025);
+}
+
+.chapter3-scene[data-phase="enteringVideo"] .curtain-input-layer,
+.chapter3-scene[data-phase="videoExperience"] .curtain-input-layer {
+  pointer-events: none;
+}
+
+.chapter3-scene[data-phase="enteringVideo"] .space-enter-hint,
+.chapter3-scene[data-phase="videoExperience"] .space-enter-hint {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.97);
+  animation: none;
+}
+
+.chapter3-complete {
+  position: fixed;
+  z-index: 240;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+  background: #fff;
+  color: #111;
+  font: 600 18px/1.3 Arial, "Microsoft YaHei", sans-serif;
+}
+
+.page[data-state="chapter3Complete"] .chapter3-complete {
+  visibility: visible;
+}
+
+@keyframes space-enter-breathe {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+}
+
+@media (max-width: 340px) {
+  .message-modal {
+    width: calc(100% - 24px);
+    padding-inline: 14px;
+  }
+
+  .modal-actions {
+    grid-template-columns: 1fr;
+  }
+}

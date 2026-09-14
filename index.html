@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FOMO｜第三章模块 3A</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page" data-state="idle">
+      <!-- 手机内容区域 -->
+      <section class="phone-screen" aria-label="手机内容区域">
+        <img class="phone-art phone-art--before" src="./pic/first/phone_before.png" alt="手持手机" />
+        <img class="phone-art phone-art--after" src="./pic/first/phone_after.png" alt="手机收到错过的信息" />
+
+        <!-- 消息弹窗 -->
+        <div
+          class="message-modal"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="message-title"
+          aria-hidden="true"
+        >
+          <p id="message-title">你有一条错过的信息，请快速查看！</p>
+
+          <!-- 两个按钮共用完全相同的确认逻辑 -->
+          <div class="modal-actions">
+            <button type="button" data-confirm>确定</button>
+            <button type="button" data-confirm>必须确定</button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 全屏 Glitch：内部故障块由 JavaScript 随机生成 -->
+      <section class="glitch-overlay" aria-hidden="true">
+        <div class="glitch-phone-echo" aria-hidden="true"></div>
+        <div class="glitch-tears" aria-hidden="true"></div>
+        <div class="glitch-pixels" aria-hidden="true"></div>
+        <div class="glitch-noise" aria-hidden="true"></div>
+        <div class="glitch-final-cut" aria-hidden="true"></div>
+      </section>
+
+      <!-- Three.js 黑白线稿立方体空间 -->
+      <section class="cube-scene" aria-label="黑白线稿立方体空间" aria-hidden="true">
+        <canvas id="cube-canvas"></canvas>
+        <!-- 与远端门绑定的第一章出口 -->
+        <button class="escape-button" type="button" aria-hidden="true" disabled>
+          逃
+        </button>
+      </section>
+
+      <!-- 第一章出口完成后的开发占位状态 -->
+      <section class="chapter-complete" aria-live="polite" aria-hidden="true">
+        <p>CHAPTER 1 COMPLETE</p>
+      </section>
+
+      <!-- 第二章 2A～2D：360° 场景、文字链与火车离场 -->
+      <section class="chapter2-scene" aria-label="第二章 360 度场景" aria-hidden="true">
+        <canvas id="chapter2-canvas"></canvas>
+        <div class="chapter2-flat-background" aria-hidden="true"></div>
+        <div class="virtual-cursor" aria-hidden="true">
+          <span class="virtual-cursor-marker"></span>
+        </div>
+        <div class="collected-fragments" aria-hidden="true"></div>
+
+        <!-- 2D：使用现有 PNG 的屏幕空间离场段落 -->
+        <div class="chapter2-finale" aria-hidden="true">
+          <img class="finale-character" src="./pic/second/wlj.png" alt="" />
+          <img class="finale-train" src="./pic/second/hc.png" alt="" />
+          <img class="finale-boarded" src="./pic/second/wljhc.png" alt="" />
+          <div class="boarding-bubble" role="status">
+            <p>
+              <span class="boarding-bubble-main">要不要和我一起看看前方有什么？</span>
+              <span class="boarding-bubble-hint">（请按住 Space——）</span>
+            </p>
+            <div class="boarding-progress" aria-hidden="true">
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter2-complete" aria-live="polite" aria-hidden="true">
+        <p>CHAPTER 2 COMPLETE</p>
+      </section>
+
+      <!-- 第三章 3A：后方媒体占位层与独立的可交互数字珠帘 -->
+      <section class="chapter3-scene" aria-label="第三章数字珠帘" aria-hidden="true">
+        <div class="scene3-media-layer">
+          <video
+            class="chapter3-video"
+            src="./pic/third/video/video-web.mp4"
+            preload="auto"
+            playsinline
+            muted
+          ></video>
+        </div>
+        <div class="bird-flight-layer bird-flight-layer--rear" aria-hidden="true"></div>
+        <canvas id="curtain-canvas" aria-hidden="true"></canvas>
+        <div class="bird-flight-layer bird-flight-layer--front" aria-hidden="true"></div>
+        <div class="curtain-input-layer" aria-hidden="true"></div>
+        <p class="space-enter-hint">按 Space 进入</p>
+      </section>
+
+      <section class="chapter3-complete" aria-live="polite" aria-hidden="true">
+        <p>CHAPTER 3 COMPLETE</p>
+      </section>
+    </main>
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+.cache/
+
+# Local editor and operating-system files
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Environment files may contain API keys or other secrets
+.env
+.env.local
+.env.*
