@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="page" data-state="idle">
+    <main class="page" data-state="idle" data-entry="pending">
+      <section class="experience-entry" aria-label="进入FOMO体验">
+        <button class="experience-entry-button" type="button">只是一个平常的午后</button>
+      </section>
       <!-- 手机内容区域 -->
       <section class="phone-screen" aria-label="手机内容区域">
         <img class="phone-art phone-art--before" src="./pic/first/phone_before.png" alt="手持手机" />
@@ -64,8 +67,34 @@
         </div>
         <div class="collected-fragments" aria-hidden="true"></div>
 
+        <div
+          class="chapter2-splitter"
+          role="separator"
+          aria-label="调整 360° 场景与 Brain 模块宽度"
+          aria-orientation="vertical"
+          aria-valuemin="45"
+          aria-valuemax="75"
+          aria-valuenow="66"
+        ></div>
+
+        <aside class="brain-panel" aria-label="Brain 模块" data-brain-state="empty" data-window-state="close">
+          <div class="brain-stage">
+            <img class="brain-asset brain-head" src="./pic/second/head.png" alt="头部轮廓" draggable="false" />
+            <div class="brain-brain-group">
+              <img class="brain-asset brain-image" src="./pic/second/brain.png" alt="脑部" draggable="false" />
+              <div class="brain-text-layer" aria-live="polite"></div>
+            </div>
+            <div class="brain-window-group" aria-hidden="true">
+              <img class="brain-asset brain-window brain-window-close" src="./pic/second/window_close.png" alt="关闭的窗户" draggable="false" />
+              <img class="brain-asset brain-window brain-window-open" src="./pic/second/window_open.png" alt="打开的窗户" draggable="false" />
+              <button class="brain-window-prompt" type="button">这里太挤了，开扇窗吧。</button>
+            </div>
+          </div>
+        </aside>
+
         <!-- 2D：使用现有 PNG 的屏幕空间离场段落 -->
         <div class="chapter2-finale" aria-hidden="true">
+          <div class="train-background" aria-hidden="true"></div>
           <img class="finale-character" src="./pic/second/wlj.png" alt="" />
           <img class="finale-train" src="./pic/second/hc.png" alt="" />
           <img class="finale-boarded" src="./pic/second/wljhc.png" alt="" />
@@ -79,6 +108,7 @@
             </div>
           </div>
         </div>
+
       </section>
 
       <section class="chapter2-complete" aria-live="polite" aria-hidden="true">
@@ -105,6 +135,129 @@
 
       <section class="chapter3-complete" aria-live="polite" aria-hidden="true">
         <p>CHAPTER 3 COMPLETE</p>
+      </section>
+      <!-- 第四章：仅布局灰盒，输入控件禁用，不接任何功能。 -->
+      <section class="chapter4-scene" aria-label="第四章布局灰盒" aria-hidden="true">
+        <div class="chapter4-left">
+          <section class="chapter4-box chapter4-puzzle" aria-label="生活组件拼图">
+            <div class="puzzle-content">
+              <div class="puzzle-stage">
+                <img class="puzzle-position-base" src="./pic/forth/position.png" alt="拼图位置底图" draggable="false" />
+                <div class="puzzle-artwork" aria-live="polite">
+                  <img class="puzzle-layer" data-puzzle-layer="sky" src="./pic/forth/sky.png" alt="天空图层" draggable="false" />
+                  <img class="puzzle-layer" data-puzzle-layer="nature" src="./pic/forth/tree.png" alt="自然图层" draggable="false" />
+                  <img class="puzzle-layer" data-puzzle-layer="pet" src="./pic/forth/dog.png" alt="宠物图层" draggable="false" />
+                  <img class="puzzle-layer" data-puzzle-layer="self" src="./pic/forth/girl.png" alt="人物图层" draggable="false" />
+                </div>
+                <div class="puzzle-icons" aria-label="可拖拽拼图图标">
+                  <button class="puzzle-icon" type="button" data-puzzle-item="self" aria-label="拖拽人物图标">
+                    <img src="./pic/forth/icon/girl_icon.png" alt="人物" draggable="false" />
+                  </button>
+                  <button class="puzzle-icon" type="button" data-puzzle-item="pet" aria-label="拖拽宠物图标">
+                    <img src="./pic/forth/icon/dog_icon.png" alt="宠物" draggable="false" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="puzzle-icons-raised" aria-label="置于山乌龟上方的可拖拽拼图图标">
+              <button class="puzzle-icon" type="button" data-puzzle-item="sky" aria-label="拖拽云朵图标">
+                <img src="./pic/forth/icon/cloud_icon.png" alt="云朵" draggable="false" />
+              </button>
+              <button class="puzzle-icon" type="button" data-puzzle-item="nature" aria-label="拖拽自然图标">
+                <img src="./pic/forth/icon/grass.png" alt="自然" draggable="false" />
+              </button>
+            </div>
+            <div class="turtle-plant-video-area" aria-hidden="false">
+              <video
+                class="turtle-plant-video"
+                src="./pic/forth/audio/swg.webm"
+                preload="auto"
+                playsinline
+              ></video>
+              <button class="turtle-plant-play-fallback" type="button" hidden>点击播放</button>
+            </div>
+            <p class="plant-hint-bubble" role="status" aria-live="polite">
+              据说拖拽顶端图标完成拼图，会有神奇的事情发生呐。
+            </p>
+            <div class="puzzle-cat">
+              <button class="puzzle-cat-button" type="button" aria-label="睡觉的猫咪">
+                <img class="puzzle-cat-frame" src="./pic/forth/cat1.png" alt="睡觉的猫咪" draggable="false" />
+              </button>
+              <p class="cat-speech-bubble" role="status" aria-live="polite">
+                啊本咪在睡觉，不要打扰我呀awwww，或许你可以给我放点歌曲？
+              </p>
+            </div>
+          </section>
+          <div class="chapter4-bottom">
+            <section class="chapter4-box chapter4-cd" aria-label="CD 唱片机模块">
+              <div class="cd-player">
+                <div class="cd-player-stage">
+                  <div class="cd-music-notes" aria-hidden="true"></div>
+                  <img class="cd-player-base" src="./pic/forth/cd/bottom.png" alt="唱片机底座" />
+                  <div class="cd-record-position">
+                    <img class="cd-record-spin" src="./pic/forth/cd/cd1.png" alt="唱片 1" />
+                  </div>
+                  <img class="cd-tonearm" src="./pic/forth/cd/top.png" alt="唱针" />
+                </div>
+                <div class="cd-controls" aria-label="唱片控制">
+                  <button type="button" data-cd-action="previous" aria-label="上一张唱片">←</button>
+                  <button type="button" data-cd-action="play">Play</button>
+                  <button type="button" data-cd-action="next" aria-label="下一张唱片">→</button>
+                </div>
+                <p class="cd-track-status">Record 1 · audio pending</p>
+              </div>
+            </section>
+            <section class="chapter4-box chapter4-letter" aria-label="信件模块">
+              <div class="letter-envelope" data-letter-state="sealed">
+                <img class="letter-envelope-a" src="./pic/forth/A.png" alt="信件主体" draggable="false" />
+                <img class="letter-envelope-b" src="./pic/forth/B.png" alt="可撕开的信件封条" draggable="false" />
+                <div class="letter-tear-line" aria-hidden="true">
+                  <span class="letter-tear-handle"></span>
+                </div>
+                <p class="letter-tear-hint">鼠标从下至上拖拽，阅读信件</p>
+              </div>
+            </section>
+          </div>
+        </div>
+        <aside class="chapter4-ai" aria-label="AI 对话区域">
+          <section class="chapter4-box ai-character-area" aria-label="AI 角色状态">
+            <img id="ai-character" class="ai-character" src="./pic/forth/IDLE/idle_1.png" alt="AI 空闲中" />
+            <p class="ai-status-bubble" aria-live="polite">泥嚎丫，偶是本站雇佣的小助手，很高兴听到您的声音 ^ ^ </p>
+          </section>
+          <section
+            id="ai-chat-messages"
+            class="chapter4-box chapter4-chat"
+            aria-label="AI 聊天记录"
+            aria-live="polite"
+          ></section>
+          <div class="chapter4-input">
+            <input
+              id="ai-chat-input"
+              class="ai-chat-input"
+              type="text"
+              placeholder="INPUT"
+              aria-label="输入消息"
+              autocomplete="off"
+            />
+            <button id="ai-send-button" class="ai-send-button" type="button">Send</button>
+          </div>
+        </aside>
+        <div class="letter-reading-layer" aria-hidden="true">
+          <button class="letter-reading-backdrop" type="button" tabindex="-1" aria-label="关闭信件"></button>
+          <div class="letter-paper-stack">
+            <span class="letter-paper-underlay" aria-hidden="true"></span>
+            <article class="letter-paper" role="dialog" aria-modal="true" aria-label="信件内容">
+              <button class="letter-cancel" type="button">Cancel</button>
+              <div class="letter-page-content">
+                <p class="letter-typewriter" aria-live="polite"></p>
+              </div>
+              <footer class="letter-page-footer">
+                <span class="letter-page-hint">拖拽翻页查看下一页</span>
+                <span class="letter-page-count" aria-live="polite">1 / 4</span>
+              </footer>
+            </article>
+          </div>
+        </div>
       </section>
     </main>
 

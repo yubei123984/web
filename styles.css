@@ -1,4 +1,11 @@
 :root {
+  --left-panel-width: 66%;
+  --right-panel-width: 34%;
+  --puzzle-height: 66%;
+  --bottom-modules-height: 34%;
+  --ai-character-height: 25%;
+  --ai-chat-height: 62%;
+  --ai-input-height: 13%;
   /* 手机区域尺寸：修改 360px 可调整大屏幕下的最大宽度 */
   --phone-max-width: 360px;
   --phone-scale: 1.15;
@@ -11,6 +18,708 @@
   --escape-pulse-scale: 1.12;
   --escape-pulse-duration: 1.5s;
 }
+
+/* 第四章灰盒：定位仅用于全屏章节容器，内部全部使用 Grid。 */
+.chapter4-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: none;
+  width: 100vw;
+  height: 100vh;
+  grid-template-columns: var(--left-panel-width) var(--right-panel-width);
+  overflow: hidden;
+  background: #f7f7f7;
+  color: #555;
+  font: 14px Arial, sans-serif;
+}
+.page[data-state="chapter4"] .chapter4-scene { display: grid; }
+.chapter4-left {
+  display: grid;
+  grid-template-rows: var(--puzzle-height) var(--bottom-modules-height);
+}
+.chapter4-bottom { display: grid; grid-template-columns: 1fr 1fr; }
+.chapter4-ai {
+  display: grid;
+  grid-template-rows: var(--ai-character-height) var(--ai-chat-height) var(--ai-input-height);
+}
+.chapter4-box.ai-character-area {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ai-character-bubble-gap, 1px);
+  padding: 3%;
+  background: #fff;
+}
+.ai-character {
+  position: static;
+  flex: 0 1 42%;
+  display: block;
+  width: auto;
+  max-width: 42%;
+  height: 88%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.ai-status-bubble {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  max-width: 48%;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(0, 0, 0, .16);
+  border-radius: 10px;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ai-status-bubble::before {
+  position: absolute;
+  top: 50%;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, .16);
+  border-left: 1px solid rgba(0, 0, 0, .16);
+  background: #fff;
+  content: "";
+  transform: translateY(-50%) rotate(45deg);
+}
+.chapter4-scene * { min-width: 0; min-height: 0; }
+.chapter4-box {
+  display: grid;
+  place-items: center;
+  outline: 1px solid #ccc;
+  outline-offset: -1px;
+  overflow: hidden;
+}
+.chapter4-chat {
+  display: block;
+  padding: 12px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.message-row {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+}
+.message-row.user { justify-content: flex-end; }
+.message-row.assistant { justify-content: flex-start; }
+.message-bubble {
+  max-width: 70%;
+  padding: 8px 10px;
+  color: #111;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.user-bubble { background: #d9d9d9; }
+.ai-bubble {
+  border: 1px solid rgba(0, 0, 0, .10);
+  background: #fff;
+}
+.error-message { color: #7a2626; }
+.chat-avatar {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.chapter4-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  outline: 1px solid #ccc;
+  outline-offset: -1px;
+}
+.chapter4-input input, .chapter4-input button {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #bbb;
+  border-radius: 0;
+  background: #fff;
+  color: #555;
+  font: inherit;
+  opacity: 1;
+}
+.chapter4-input button:disabled { cursor: wait; opacity: .55; }
+
+/* 第四章 PUZZLE：底图、激活图层、图标和目标区均限制在此 Grid 单元。 */
+.chapter4-puzzle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.puzzle-content {
+  position: absolute;
+  z-index: var(--puzzle-layer-z-index, 10);
+  top: 0;
+  left: calc(50% + var(--puzzle-content-offset-x, 8%));
+  display: grid;
+  place-items: center;
+  width: 84%;
+  height: 100%;
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+.puzzle-stage {
+  position: relative;
+  width: min(94%, 88.7vh);
+  aspect-ratio: 615 / 416;
+  overflow: hidden;
+  user-select: none;
+}
+.puzzle-position-base {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+.puzzle-artwork {
+  position: absolute;
+  z-index: var(--puzzle-layer-z-index, 10);
+  top: 19.7%;
+  left: 2.6%;
+  width: 94.96%;
+  aspect-ratio: 1672 / 941;
+  overflow: hidden;
+  pointer-events: none;
+}
+.puzzle-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transform:
+    translate3d(var(--puzzle-audio-x, 0px), var(--puzzle-audio-y, 0px), 0)
+    scale(calc(.99 + var(--puzzle-audio-scale, 0)));
+  transition: opacity 500ms ease, transform 140ms linear;
+  will-change: transform;
+}
+.puzzle-layer.is-active {
+  opacity: 1;
+  transform:
+    translate3d(var(--puzzle-audio-x, 0px), var(--puzzle-audio-y, 0px), 0)
+    scale(calc(1 + var(--puzzle-audio-scale, 0)));
+}
+.puzzle-layer[data-puzzle-layer="sky"] { z-index: 1; }
+.puzzle-layer[data-puzzle-layer="nature"] { z-index: 2; }
+.puzzle-layer[data-puzzle-layer="pet"] { z-index: 3; }
+.puzzle-layer[data-puzzle-layer="self"] { z-index: 4; }
+.puzzle-icons {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  pointer-events: none;
+}
+.puzzle-icons-raised {
+  position: absolute;
+  z-index: 25;
+  top: 50%;
+  left: calc(50% + var(--puzzle-content-offset-x, 8%));
+  width: min(78.96%, 88.7vh);
+  aspect-ratio: 615 / 416;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.puzzle-icon {
+  position: absolute;
+  width: 7.2%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translate(-50%, -50%) scale(var(--icon-scale, 1));
+  transform-origin: center;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+.puzzle-icon img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.puzzle-icon.is-dragging { z-index: 8; cursor: grabbing; }
+.puzzle-icon.is-returning { transition: left 320ms ease, top 320ms ease; }
+.puzzle-icon.is-completed {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.72);
+  pointer-events: none;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+.turtle-plant-video-area {
+  position: absolute;
+  z-index: var(--plant-video-z-index, 20);
+  left: var(--plant-video-x, 1.5%);
+  top: var(--plant-video-y, 66%);
+  display: grid;
+  place-items: center;
+  width: var(--plant-video-width, 16%);
+  height: var(--plant-video-height, 32%);
+  overflow: visible;
+  opacity: 1;
+  pointer-events: none;
+  transform: scale(var(--plant-video-scale, 1));
+  transform-origin: left bottom;
+  transition: opacity 420ms ease;
+}
+.turtle-plant-video-area.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.turtle-plant-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.turtle-plant-play-fallback {
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  padding: 3px 7px;
+  border: 1px solid rgba(0, 0, 0, .28);
+  background: rgba(255, 255, 255, .88);
+  color: #555;
+  font: 10px Arial, sans-serif;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+.puzzle-cat {
+  position: absolute;
+  z-index: 30;
+  left: var(--cat-x, 90%);
+  top: var(--cat-y, 82%);
+  width: min(18%, 150px);
+  transform: translate(-50%, -50%) scale(var(--cat-scale, .72));
+  transform-origin: center bottom;
+}
+.puzzle-cat-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.puzzle-cat-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: transparent;
+  pointer-events: none;
+}
+.cat-speech-bubble,
+.plant-hint-bubble {
+  position: absolute;
+  z-index: 40;
+  width: max-content;
+  max-width: min(210px, 30vw);
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(0, 0, 0, .24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .94);
+  color: #444;
+  font: 11px/1.4 Arial, "Microsoft YaHei", sans-serif;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease, visibility 0s linear 180ms;
+}
+.cat-speech-bubble {
+  right: 0;
+  bottom: calc(100% + 8px);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.plant-hint-bubble {
+  left: 2%;
+  bottom: 31%;
+}
+.cat-speech-bubble.is-visible,
+.plant-hint-bubble.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 180ms ease;
+}
+/* 第四章 CD：所有正式图层限制在 CD Grid 单元内部。 */
+.chapter4-cd {
+  position: relative;
+  display: block;
+  padding: 8px;
+  overflow: hidden;
+}
+.cd-player { position: relative; width: 100%; height: 100%; }
+.cd-player-stage {
+  position: absolute;
+  inset: 0 0 54px;
+  overflow: hidden;
+}
+.cd-music-notes {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cd-music-note {
+  position: absolute;
+  left: var(--note-x);
+  top: var(--note-y);
+  width: clamp(16px, 6%, 34px);
+  height: auto;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(var(--note-scale)) rotate(var(--note-rotation));
+  animation: cd-note-drift var(--note-lifetime) ease-in-out forwards;
+  pointer-events: none;
+}
+@keyframes cd-note-drift {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(var(--note-start-scale)) rotate(var(--note-rotation));
+  }
+  24% { opacity: .68; }
+  62% { opacity: .64; }
+  78% { opacity: .48; }
+  100% {
+    opacity: 0;
+    transform:
+      translate(calc(-50% + var(--note-drift-x)), calc(-50% + var(--note-drift-y)))
+      scale(var(--note-end-scale))
+      rotate(calc(var(--note-rotation) + var(--note-drift-rotation)));
+  }
+}
+.cd-player-base,
+.cd-record-position,
+.cd-tonearm,
+.cd-record-ghost {
+  position: absolute;
+  display: block;
+  height: auto;
+  object-fit: contain;
+  transform-origin: center;
+  user-select: none;
+  pointer-events: none;
+}
+.cd-player-base {
+  z-index: 1;
+  width: min(62%, 26vh);
+}
+.cd-record-position,
+.cd-record-ghost {
+  z-index: 2;
+  width: min(43%, 18vh);
+}
+.cd-record-position { transform: translate(-50%, -50%) scale(var(--cd-record-scale, 1)); }
+.cd-record-spin {
+  display: block;
+  width: 100%;
+  height: auto;
+  animation: cd-record-clockwise 8s linear infinite;
+  animation-play-state: paused;
+}
+.cd-record-position.is-playing .cd-record-spin { animation-play-state: running; }
+.cd-tonearm {
+  z-index: 3;
+  width: min(22%, 10vh);
+}
+.cd-controls {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 22px;
+  display: grid;
+  grid-template-columns: auto minmax(74px, auto) auto;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+.cd-controls button {
+  border: 1px solid #999;
+  border-radius: 0;
+  background: #fff;
+  color: #555;
+  font: inherit;
+  cursor: pointer;
+}
+.cd-controls button { min-height: 28px; padding: 4px 10px; }
+.cd-controls button:disabled { cursor: wait; opacity: .55; }
+.cd-track-status {
+  position: absolute;
+  right: 6px;
+  bottom: 0;
+  left: 6px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cd-record-ghost { transform: translate(-50%, -50%) scale(var(--cd-record-scale, 1)); }
+@keyframes cd-record-clockwise { to { transform: rotate(360deg); } }
+
+/* 第四章 LETTER：交互信封严格限制在左下信件 Grid 单元内。 */
+.chapter4-letter {
+  position: relative;
+  overflow: hidden;
+  padding: 8%;
+  perspective: var(--tear-perspective, 900px);
+}
+.letter-envelope {
+  --letter-b-start: 87.5%;
+  --letter-b-origin-x: 93.75%;
+  --tear-progress: 0;
+  --tear-rotation: 0deg;
+  --tear-rotate-x: 0deg;
+  --tear-translate-x: 0px;
+  --tear-translate-y: 0px;
+  --tear-translate-z: 0px;
+  --tear-skew: 0deg;
+  --tear-scale-y: 1;
+  --tear-opacity: 1;
+  position: relative;
+  width: min(84%, 43.5vh);
+  aspect-ratio: var(--letter-envelope-aspect, 1835 / 1032);
+  overflow: visible;
+  background: transparent;
+  color: #777;
+  user-select: none;
+  touch-action: none;
+}
+.letter-envelope-a,
+.letter-envelope-b {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.letter-envelope-a {
+  z-index: 1;
+}
+.letter-envelope-b {
+  z-index: 2;
+  transform-origin: var(--letter-b-origin-x) top;
+  transform:
+    translate3d(var(--tear-translate-x), var(--tear-translate-y), var(--tear-translate-z))
+    rotateX(var(--tear-rotate-x))
+    rotateZ(var(--tear-rotation))
+    skewX(var(--tear-skew))
+    scaleY(var(--tear-scale-y));
+  opacity: var(--tear-opacity);
+  backface-visibility: visible;
+  transform-style: preserve-3d;
+  transition: transform 320ms ease, opacity 320ms ease;
+  will-change: transform;
+}
+.letter-envelope[data-letter-state="tearing"] .letter-envelope-b { transition: none; }
+.letter-tear-line {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: var(--letter-b-start);
+  border-left: 1px dashed #777;
+  pointer-events: none;
+}
+.letter-tear-handle {
+  position: absolute;
+  left: -14px;
+  bottom: -4px;
+  width: 28px;
+  height: 42px;
+  pointer-events: auto;
+  cursor: ns-resize;
+}
+.letter-tear-hint {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: -22px;
+  margin: 0;
+  color: #555;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transform: translateX(-50%);
+  transition: opacity 160ms ease;
+}
+.letter-envelope[data-letter-state="tearing"] .letter-tear-hint { opacity: 0; }
+.letter-envelope[data-letter-state="opened"] { cursor: pointer; }
+.letter-envelope[data-letter-state="opened"] .letter-tear-hint,
+.letter-envelope[data-letter-state="opened"] .letter-tear-line { opacity: 0; }
+
+.letter-reading-layer {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--letter-paper-reveal-duration, 600ms) ease,
+    visibility 0s linear var(--letter-paper-reveal-duration, 600ms);
+}
+.letter-reading-layer.is-visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity var(--letter-paper-reveal-duration, 600ms) ease;
+}
+.letter-reading-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgba(20, 20, 20, 0.16);
+}
+.letter-paper-stack {
+  position: relative;
+  z-index: 101;
+  width: min(var(--letter-paper-width, 76vw), 960px, calc((100vh - 56px) * 824 / 584));
+  max-width: calc(100vw - 40px);
+  aspect-ratio: 824 / 584;
+  opacity: 0;
+  transform: scale(.98);
+  transition: opacity var(--letter-paper-reveal-duration, 600ms) ease,
+    transform var(--letter-paper-reveal-duration, 600ms) ease;
+}
+.letter-paper-stack::before,
+.letter-paper-stack::after,
+.letter-paper-underlay {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(130, 112, 80, .28);
+  background: url("./pic/forth/letter.png") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+.letter-paper-stack::before,
+.letter-paper-stack::after { content: ""; }
+.letter-paper-underlay { z-index: -3; transform: translate(-16px, 3px) rotate(.6deg); }
+.letter-paper-stack::before { z-index: -2; transform: translate(-11px, 10px) rotate(-1.2deg); }
+.letter-paper-stack::after { z-index: -1; transform: translate(10px, 6px) rotate(.8deg); }
+.letter-paper {
+  position: absolute;
+  z-index: 101;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 8.5% 9% 5.5%;
+  overflow: hidden;
+  border: 1px solid rgba(130, 112, 80, .34);
+  background: url("./pic/forth/letter.png") center / 100% 100% no-repeat;
+  color: #333;
+  touch-action: none;
+  cursor: grab;
+  transform: translateX(var(--letter-page-drag-x, 0px));
+  transition: transform 180ms ease;
+}
+.letter-reading-layer.is-visible .letter-paper-stack { opacity: 1; transform: scale(1); }
+.letter-paper.is-dragging { cursor: grabbing; transition: none; }
+.letter-cancel {
+  position: absolute;
+  z-index: 103;
+  top: 14px;
+  right: 16px;
+  padding: 5px 8px;
+  border: 1px solid #999;
+  border-radius: 0;
+  background: #fff;
+  color: #555;
+  font: inherit;
+  cursor: pointer;
+}
+.letter-typewriter {
+  position: relative;
+  z-index: 102;
+  display: block;
+  width: 100%;
+  margin: 0;
+  white-space: pre-wrap;
+  visibility: visible;
+  opacity: 1;
+  color: #222;
+  font: clamp(11px, 1.02vw, 14px)/1.68 "Microsoft YaHei", "Noto Serif SC", serif;
+  letter-spacing: .015em;
+  overflow-wrap: anywhere;
+}
+.letter-page-content {
+  position: relative;
+  z-index: 102;
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  visibility: visible;
+  opacity: 1;
+}
+.letter-page-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  min-height: 20px;
+  padding-top: 7px;
+  color: rgba(63, 57, 47, .62);
+  font: 10px/1.2 Arial, "Microsoft YaHei", sans-serif;
+}
+.letter-page-hint[hidden] { visibility: hidden; }
+.letter-page-count { margin-left: auto; white-space: nowrap; }
+@media (max-width: 700px) {
+  .letter-paper { padding: 9.5% 8% 5%; }
+  .letter-typewriter { font-size: clamp(9px, 2.35vw, 12px); line-height: 1.55; }
+  .letter-page-footer { font-size: 9px; }
+}
+
+.experience-entry {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  opacity: 1;
+  transition: opacity 220ms ease;
+}
+.experience-entry[hidden] { display: none; }
+.experience-entry-button {
+  padding: 9px 18px;
+  border: 1px solid #222;
+  border-radius: 2px;
+  background: #fff;
+  color: #111;
+  font: 14px Arial, "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+.page[data-entry="pending"] .phone-screen { visibility: hidden; }
+.page[data-entry="entering"] .experience-entry { opacity: 0; pointer-events: none; }
 
 * {
   box-sizing: border-box;
@@ -399,13 +1108,41 @@ body {
 }
 
 #chapter2-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
-  width: 100%;
+  width: calc(var(--ch2-split-ratio, 66%) - var(--ch2-splitter-half-width, 3px));
   height: 100%;
   cursor: grab;
   touch-action: none;
   opacity: 1;
   transition: opacity var(--scene-fade-duration, 900ms) ease;
+}
+
+.chapter2-splitter {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: var(--ch2-split-ratio, 66%);
+  width: var(--ch2-splitter-width, 6px);
+  translate: -50% 0;
+  background: rgba(42, 42, 42, .16);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .28);
+  cursor: col-resize;
+  touch-action: none;
+  transition: background-color 140ms ease, opacity var(--scene-fade-duration, 900ms) ease;
+}
+
+.chapter2-splitter:hover,
+.chapter2-splitter.is-resizing {
+  background: rgba(42, 42, 42, .38);
+}
+
+.chapter2-scene.is-resizing,
+.chapter2-scene.is-resizing * {
+  cursor: col-resize !important;
 }
 
 #chapter2-canvas.is-dragging {
@@ -502,11 +1239,113 @@ body {
   }
 }
 
+/* 2A Brain：右栏与左侧 360° 画面并列；火车段开始前整体淡出。 */
+.brain-panel {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  width: calc(100% - var(--ch2-split-ratio, 66%) - var(--ch2-splitter-half-width, 3px));
+  height: 100%;
+  overflow: hidden;
+  border-left: 1px solid rgba(0, 0, 0, .2);
+  background: #ededeb;
+  opacity: 1;
+  transition: opacity var(--scene-fade-duration, 900ms) ease;
+}
+.brain-stage { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.brain-asset {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.brain-head {
+  position: absolute;
+  z-index: var(--brain-head-z, 10);
+  width: min(58%, 320px);
+  height: auto;
+  aspect-ratio: 225 / 300;
+  transform: translate(-50%, -50%) scale(var(--head-scale, 1));
+  transform-origin: center;
+}
+.brain-brain-group {
+  position: absolute;
+  z-index: var(--brain-brain-z, 20);
+  width: min(48%, 280px);
+  aspect-ratio: 186 / 167;
+  transform: translate(-50%, -50%) scale(var(--brain-scale, 1));
+  transform-origin: center;
+}
+.brain-image { position: absolute; z-index: var(--brain-brain-z, 20); inset: 0; }
+.brain-text-layer {
+  position: absolute;
+  z-index: var(--brain-text-z, 30);
+  inset: 0;
+  overflow: hidden;
+  -webkit-mask: url("./pic/second/brain.png") center / 100% 100% no-repeat;
+  mask: url("./pic/second/brain.png") center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+.brain-thought {
+  position: absolute;
+  color: rgba(0, 0, 0, var(--thought-opacity, .84));
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translate(-50%, -50%) rotate(var(--thought-rotation, 0deg));
+  transform-origin: center;
+}
+.brain-window-group {
+  position: absolute;
+  z-index: var(--brain-window-z, 40);
+  width: min(58%, 320px);
+  aspect-ratio: 225 / 300;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -50%) scale(var(--window-scale, 1));
+  transform-origin: center;
+  transition: opacity 420ms ease;
+}
+.brain-window-group.is-visible { opacity: 1; visibility: visible; }
+.brain-window { position: absolute; inset: 0; }
+.brain-window-open { opacity: 0; }
+.brain-panel[data-window-state="open"] .brain-window-close { opacity: 0; }
+.brain-panel[data-window-state="open"] .brain-window-open { opacity: 1; }
+.brain-window-prompt {
+  position: absolute;
+  z-index: 41;
+  left: 50%;
+  bottom: 2%;
+  width: max-content;
+  max-width: 92%;
+  padding: 6px 9px;
+  border: 1px solid rgba(0, 0, 0, .35);
+  background: rgba(255, 255, 255, .9);
+  color: #222;
+  font: 12px/1.3 Arial, "Microsoft YaHei", sans-serif;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+.brain-panel[data-window-state="open"] .brain-window-prompt { display: none; }
+.chapter2-scene.is-scene-fading .brain-panel,
+.chapter2-scene.is-flat-2d .brain-panel,
+.chapter2-scene.is-scene-fading .chapter2-splitter,
+.chapter2-scene.is-flat-2d .chapter2-splitter {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 2D：小人、火车和气泡位于纯白屏幕空间，不再依赖圆柱背景。 */
 .chapter2-finale {
   /* 三张素材原图均为 512×512；仅当视口放不下时等比缩小。 */
   --character-width: min(512px, calc(100vw - 24px), calc(100vh - 24px));
-  --character-left: 50%;
+  --train-scene-start-x: 50%;
+  --train-scene-start-y: 50%;
   --train-width: min(512px, calc(100vw - 24px), calc(100vh - 24px));
   --bubble-left: 58%;
   --bubble-top-base: clamp(90px, 20vh, 190px);
@@ -524,6 +1363,25 @@ body {
   visibility: visible;
 }
 
+.train-background {
+  position: absolute;
+  z-index: var(--train-background-z, 0);
+  inset: 0;
+  background-color: transparent;
+  background-image: url("./pic/second/bg.png");
+  background-repeat: var(--train-bg-repeat-mode, repeat);
+  background-position: var(--train-bg-offset-x, 0px) var(--train-bg-offset-y, 0px);
+  background-size: var(--train-bg-tile-width, 100%) var(--train-bg-tile-height, auto);
+  opacity: 0;
+  transition: opacity var(--scene-fade-duration, 900ms) ease;
+  pointer-events: none;
+}
+
+.chapter2-scene.is-scene-fading .train-background,
+.chapter2-scene.is-flat-2d .train-background {
+  opacity: 1;
+}
+
 .finale-character,
 .finale-train,
 .finale-boarded {
@@ -536,10 +1394,10 @@ body {
 }
 
 .finale-character {
-  z-index: 2;
-  left: var(--character-left);
-  top: 50%;
-  width: var(--character-width);
+  z-index: var(--character-z-index, 20);
+  left: var(--train-scene-start-x);
+  top: var(--train-scene-start-y);
+  width: calc(var(--character-width) * var(--train-scene-scale, 0.8));
   translate: -50% -50%;
   scale: 0.96;
   opacity: 0;
@@ -555,11 +1413,11 @@ body {
 
 .finale-train,
 .finale-boarded {
-  z-index: 1;
-  left: 0;
-  top: 50%;
-  width: var(--train-width);
-  translate: 0 -50%;
+  z-index: var(--train-z-index, 10);
+  left: var(--train-scene-start-x);
+  top: var(--train-scene-start-y);
+  width: calc(var(--train-width) * var(--train-scene-scale, 0.8));
+  translate: -50% -50%;
   opacity: 0;
   will-change: transform;
 }
@@ -578,7 +1436,7 @@ body {
 
 .boarding-bubble {
   position: absolute;
-  z-index: 3;
+  z-index: 30;
   left: var(--bubble-left);
   top: max(16px, calc(var(--bubble-top-base) + var(--bubble-offset-y)));
   width: min(360px, calc(100vw - 32px));
