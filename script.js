@@ -3661,12 +3661,10 @@ window.addEventListener("resize", () => {
 
 // 第四章新增音效集中管理；加载或播放失败时只静默降级，不中断交互。
 const CHAPTER4_AUDIO = Object.freeze({
-  letterTear: "./pic/forth/audio/tear.mp3",
   aiSend: "./pic/forth/audio/sent.mp3",
   puzzleSuccess: "./pic/forth/audio/shine.mp3",
 });
 const CHAPTER4_AUDIO_VOLUME = Object.freeze({
-  letterTear: 0.65,
   aiSend: 0.5,
   puzzleSuccess: 0.6,
 });
@@ -3714,7 +3712,6 @@ function playChapter4Sound(name) {
   }
 }
 
-function playLetterTearSound() { playChapter4Sound("letterTear"); }
 function playSendButtonSound() { playChapter4Sound("aiSend"); }
 function playPuzzleSuccessSound() { playChapter4Sound("puzzleSuccess"); }
 
@@ -3734,6 +3731,10 @@ const PAPER_REVEAL_DURATION = 600;
 const TYPE_INTERVAL = 18;
 const TEAR_DRAG_DISTANCE_RATIO = 1.25;
 const LETTER_PAGE_TURN_THRESHOLD = 70;
+const LETTER_AUDIO = Object.freeze({
+  typewriting: "./pic/forth/audio/typewriting.mp3",
+});
+const LETTER_TYPE_SFX_VOLUME = 0.3;
 // 正式信件文案：后期润色时只修改这个数组，不要改下方分页、翻页或打字机函数。
 const LETTER_PAGES = Object.freeze([
   `FOMO（错失焦虑）指担心自己缺席他人有意义的经历、信息或机会，从而产生持续焦虑与强迫性查看行为的心理状态。它不完全是个人缺陷，更是环境产物：社交媒体把他人筛选后的高光片段集中、连续、可量化地呈现给你，你拿它跟自己的日常全程对比，统计上必然吃亏。
@@ -3805,6 +3806,8 @@ let letterPagePointerId = null;
 let letterPageDragStartX = 0;
 let letterPageDragX = 0;
 let letterPageTurning = false;
+let letterTypingAudio = null;
+let letterTypingAudioInitialized = false;
 
 letterEnvelope.style.setProperty("--letter-envelope-aspect", String(LETTER_ENVELOPE_ASPECT));
 letterEnvelope.dataset.aspect = String(LETTER_ENVELOPE_ASPECT);
@@ -3867,10 +3870,55 @@ function setLetterProgress(value) {
   letterEnvelope.style.setProperty("--tear-opacity", String(1 - tearProgress * 0.92));
 }
 
+function initLetterTypingAudio() {
+  if (letterTypingAudioInitialized) return letterTypingAudio;
+  letterTypingAudioInitialized = true;
+  try {
+    letterTypingAudio = new Audio(new URL(LETTER_AUDIO.typewriting, import.meta.url).href);
+    letterTypingAudio.preload = "auto";
+    letterTypingAudio.loop = true;
+    letterTypingAudio.volume = LETTER_TYPE_SFX_VOLUME;
+    letterTypingAudio.addEventListener("error", () => {
+      warnChapter4AudioOnce("letterTypewriting", letterTypingAudio?.error);
+    });
+  } catch (error) {
+    letterTypingAudio = null;
+    warnChapter4AudioOnce("letterTypewriting", error);
+  }
+  return letterTypingAudio;
+}
+
+function startLetterTypingSfx() {
+  if (!isLetterTyping) return;
+  const audio = initLetterTypingAudio();
+  if (!audio) {
+    warnChapter4AudioOnce("letterTypewriting");
+    return;
+  }
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.play().catch(error => warnChapter4AudioOnce("letterTypewriting", error));
+  } catch (error) {
+    warnChapter4AudioOnce("letterTypewriting", error);
+  }
+}
+
+function stopLetterTypingSfx() {
+  if (!letterTypingAudio) return;
+  try {
+    letterTypingAudio.pause();
+    letterTypingAudio.currentTime = 0;
+  } catch (error) {
+    warnChapter4AudioOnce("letterTypewriting", error);
+  }
+}
+
 function clearTypewriter() {
   if (typingTimer !== null) window.clearTimeout(typingTimer);
   typingTimer = null;
   isLetterTyping = false;
+  stopLetterTypingSfx();
   canTurnLetterPage = false;
   typingRunId += 1;
 }
@@ -3880,6 +3928,7 @@ function startTypewriter(pageIndex = currentLetterPage) {
   currentLetterPage = THREE.MathUtils.clamp(pageIndex, 0, LETTER_PAGES.length - 1);
   currentCharIndex = 0;
   isLetterTyping = true;
+  startLetterTypingSfx();
   canTurnLetterPage = false;
   const activeTypingRunId = typingRunId;
   letterState = "typing";
@@ -3888,6 +3937,7 @@ function startTypewriter(pageIndex = currentLetterPage) {
   const pageText = LETTER_PAGES[currentLetterPage] || "";
   if (!pageText) {
     isLetterTyping = false;
+    stopLetterTypingSfx();
     letterState = "complete";
     console.warn("[chapter4 letter] current page has no text", currentLetterPage);
     return;
@@ -3901,6 +3951,7 @@ function startTypewriter(pageIndex = currentLetterPage) {
     } else {
       typingTimer = null;
       isLetterTyping = false;
+      stopLetterTypingSfx();
       canTurnLetterPage = true;
       letterState = "complete";
       updateLetterPageChrome();
@@ -4056,7 +4107,6 @@ function finishLetterTear(event) {
     setLetterProgress(1);
     letterState = "opened";
     letterEnvelope.dataset.letterState = "opened";
-    playLetterTearSound();
     openLetterReading();
   } else {
     setLetterProgress(0);
@@ -4845,3 +4895,2699 @@ aiInput.addEventListener("keydown", event => {
 });
 
 setAIState("idle");
+
+// 第四章正四面体投掷选择器：只负责抽取与过场，具体事件通过自定义事件接入。
+const TETRA_DOT_COLOR = 0x003c8f;
+const TETRA_EVENTS = Object.freeze({
+  1: "tetris",
+  2: "filter",
+  3: "breathing",
+  4: "grandpa",
+});
+const TETRA_EVENT_LABELS = Object.freeze({
+  tetris: "信息整理 / 俄罗斯方块",
+  filter: "红黑滤光片认知重评",
+  breathing: "4-6 呼吸",
+  grandpa: "老爷爷情景对话",
+});
+const TETRA_AUDIO = Object.freeze({
+  roll: "./pic/forth/touzi/dice.mp3",
+});
+const TETRA_ROLL_VOLUME = 0.65;
+const TETRA_IDLE_X = 0.065;
+const TETRA_IDLE_Y = 0.1;
+const TETRA_IDLE_SCALE = 0.4;
+const TETRA_CENTER_X = 0.5;
+const TETRA_CENTER_Y = 0.5;
+const TETRA_THROW_SCALE = 1;
+const TETRA_MOVE_TO_CENTER_DURATION = 760;
+const TETRA_THROW_HEIGHT = 0.26;
+const TETRA_THROW_DURATION = 760;
+const TETRA_FALL_DURATION = 680;
+const TETRA_BOUNCE_AMOUNT = 0.035;
+const TETRA_LANDING_DURATION = 340;
+const TETRA_FACE_ALIGN_DURATION = 420;
+const TETRA_ROTATION_X = Math.PI * 4.5;
+const TETRA_ROTATION_Y = Math.PI * 1.2;
+const TETRA_ROTATION_Z = Math.PI * 0.24;
+const TETRA_RESULT_HOLD_DURATION = 800;
+const TETRA_IDLE_ROTATION_SPEED = 0.065;
+
+const tetraSelector = document.querySelector(".chapter4-tetra-selector");
+const tetraStage = document.querySelector(".tetra-stage");
+const tetraCanvas = document.querySelector("#tetra-canvas");
+const tetraHitTarget = document.querySelector(".tetra-hit-target");
+const tetraStatusDots = [...document.querySelectorAll("[data-tetra-status]")];
+const tetraRoundReset = document.querySelector(".tetra-round-reset");
+const tetraEventPlaceholder = document.querySelector(".tetra-event-placeholder");
+const tetraEventName = document.querySelector(".tetra-event-name");
+const tetraEventReturn = document.querySelector(".tetra-event-return");
+tetraSelector.style.setProperty(
+  "--tetra-dot-color",
+  `#${TETRA_DOT_COLOR.toString(16).padStart(6, "0")}`
+);
+
+function createManagedAudio(src, label, { loop = false, volume = 1 } = {}) {
+  const audio = new Audio(src);
+  audio.preload = "auto";
+  audio.loop = loop;
+  audio.volume = volume;
+  audio.addEventListener("error", () => {
+    console.warn(`[audio] Unable to load ${label}: ${src}`);
+  });
+  return audio;
+}
+
+function playManagedAudio(audio, label, { restart = true } = {}) {
+  if (restart) {
+    try {
+      audio.currentTime = 0;
+    } catch (error) {
+      console.warn(`[audio] Unable to rewind ${label}.`, error);
+    }
+  }
+  const playAttempt = audio.play();
+  if (playAttempt) {
+    playAttempt.catch(error => {
+      console.warn(`[audio] Unable to play ${label}.`, error);
+    });
+  }
+}
+
+function stopManagedAudio(audio, { reset = true } = {}) {
+  audio.pause();
+  if (!reset) return;
+  try {
+    audio.currentTime = 0;
+  } catch (error) {
+    // Metadata may not be ready yet; pause still succeeds safely.
+  }
+}
+
+const tetraRollAudio = createManagedAudio(TETRA_AUDIO.roll, "dice roll", {
+  volume: TETRA_ROLL_VOLUME,
+});
+
+const tetraScene = new THREE.Scene();
+const tetraCamera = new THREE.PerspectiveCamera(34, 1, 0.1, 50);
+tetraCamera.position.set(0, 0.18, 5.25);
+
+const tetraRenderer = new THREE.WebGLRenderer({
+  canvas: tetraCanvas,
+  alpha: true,
+  antialias: true,
+});
+tetraRenderer.setClearColor(0x000000, 0);
+tetraRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+tetraRenderer.shadowMap.enabled = true;
+tetraRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+tetraRenderer.outputColorSpace = THREE.SRGBColorSpace;
+tetraRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+tetraRenderer.toneMappingExposure = 0.92;
+
+const tetraWorld = new THREE.Group();
+const tetraObject = new THREE.Group();
+tetraWorld.add(tetraObject);
+tetraScene.add(tetraWorld);
+
+const tetraSourceGeometry = new THREE.TetrahedronGeometry(1.28, 0);
+const tetraGeometry = tetraSourceGeometry.index
+  ? tetraSourceGeometry.toNonIndexed()
+  : tetraSourceGeometry;
+const tetraMaterial = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  roughness: 0.88,
+  metalness: 0,
+  envMapIntensity: 0.18,
+  flatShading: true,
+});
+const tetraMesh = new THREE.Mesh(tetraGeometry, tetraMaterial);
+tetraMesh.castShadow = true;
+tetraMesh.receiveShadow = true;
+tetraObject.add(tetraMesh);
+
+const tetraDotMaterial = new THREE.MeshStandardMaterial({
+  color: TETRA_DOT_COLOR,
+  roughness: 0.9,
+  metalness: 0,
+  side: THREE.DoubleSide,
+});
+const tetraDotGeometry = new THREE.CircleGeometry(0.095, 28);
+const tetraFaceFrames = [];
+const tetraPipLayouts = Object.freeze({
+  1: Object.freeze([[0, 0]]),
+  2: Object.freeze([[-0.22, 0.2], [0.22, -0.2]]),
+  3: Object.freeze([[0, 0.27], [-0.23, -0.18], [0.23, -0.18]]),
+  4: Object.freeze([[-0.19, 0.18], [0.19, 0.18], [-0.19, -0.18], [0.19, -0.18]]),
+});
+
+const tetraPositions = tetraGeometry.getAttribute("position");
+for (let faceIndex = 0; faceIndex < 4; faceIndex += 1) {
+  const offset = faceIndex * 3;
+  const a = new THREE.Vector3().fromBufferAttribute(tetraPositions, offset);
+  const b = new THREE.Vector3().fromBufferAttribute(tetraPositions, offset + 1);
+  const c = new THREE.Vector3().fromBufferAttribute(tetraPositions, offset + 2);
+  const center = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+  const normal = b.clone().sub(a).cross(c.clone().sub(a)).normalize();
+  if (normal.dot(center) < 0) normal.negate();
+  const up = a.clone().sub(center).normalize();
+  const right = up.clone().cross(normal).normalize();
+  const faceNumber = faceIndex + 1;
+  tetraFaceFrames[faceNumber] = { normal: normal.clone(), up: up.clone() };
+
+  tetraPipLayouts[faceNumber].forEach(([x, y]) => {
+    const dot = new THREE.Mesh(tetraDotGeometry, tetraDotMaterial);
+    dot.position.copy(center)
+      .addScaledVector(right, x)
+      .addScaledVector(up, y)
+      .addScaledVector(normal, 0.012);
+    dot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    tetraObject.add(dot);
+  });
+}
+
+const tetraGround = new THREE.Mesh(
+  new THREE.PlaneGeometry(4.4, 4.4),
+  new THREE.ShadowMaterial({ color: 0x7b8490, opacity: 0.13 })
+);
+tetraGround.position.y = -1.52;
+tetraGround.rotation.x = -Math.PI / 2;
+tetraGround.receiveShadow = true;
+tetraScene.add(tetraGround);
+
+const tetraHemisphereLight = new THREE.HemisphereLight(0xfffdf8, 0xcbd2dc, 2.1);
+tetraScene.add(tetraHemisphereLight);
+const tetraKeyLight = new THREE.DirectionalLight(0xfff8ed, 3.1);
+tetraKeyLight.position.set(-3.5, 4.6, 4.2);
+tetraKeyLight.castShadow = true;
+tetraKeyLight.shadow.mapSize.set(1024, 1024);
+tetraKeyLight.shadow.camera.left = -3;
+tetraKeyLight.shadow.camera.right = 3;
+tetraKeyLight.shadow.camera.top = 3;
+tetraKeyLight.shadow.camera.bottom = -3;
+tetraKeyLight.shadow.radius = 5;
+tetraKeyLight.shadow.bias = -0.0008;
+tetraScene.add(tetraKeyLight);
+const tetraFillLight = new THREE.DirectionalLight(0xdde8f6, 0.55);
+tetraFillLight.position.set(3, 1.5, -3.5);
+tetraScene.add(tetraFillLight);
+
+const tetraCompletedEvents = new Set();
+let tetraShuffleBag = [];
+let tetraBagIndex = 0;
+let tetraLocked = false;
+let tetraHovered = false;
+let tetraPhase = "idle";
+let tetraMotionState = null;
+let tetraActiveFace = null;
+let tetraLastFrameTime = performance.now();
+let tetraRendererWidth = 0;
+let tetraRendererHeight = 0;
+let tetraScreenX = TETRA_IDLE_X;
+let tetraScreenY = TETRA_IDLE_Y;
+let tetraVisualScale = TETRA_IDLE_SCALE;
+let tetraRound = 1;
+const tetraIdleRotation = new THREE.Euler(0.38, -0.58, 0.12, "XYZ");
+
+function createTetraShuffleBag() {
+  const bag = [1, 2, 3, 4];
+  for (let index = bag.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [bag[index], bag[swapIndex]] = [bag[swapIndex], bag[index]];
+  }
+  return bag;
+}
+
+function getNextTetraFace() {
+  while (tetraBagIndex < tetraShuffleBag.length) {
+    const face = tetraShuffleBag[tetraBagIndex];
+    tetraBagIndex += 1;
+    if (!tetraCompletedEvents.has(face)) return face;
+  }
+  return null;
+}
+
+function getTetraFaceTargetQuaternion(faceNumber) {
+  const frame = tetraFaceFrames[faceNumber];
+  const cameraFacingNormal = new THREE.Vector3(0, 0, 1);
+  const alignFace = new THREE.Quaternion().setFromUnitVectors(frame.normal, cameraFacingNormal);
+  const alignedUp = frame.up.clone().applyQuaternion(alignFace);
+  const roll = -Math.atan2(alignedUp.x, alignedUp.y);
+  const alignUp = new THREE.Quaternion().setFromAxisAngle(cameraFacingNormal, roll);
+  return alignUp.multiply(alignFace).normalize();
+}
+
+function smoothTetraStep(edge0, edge1, value) {
+  const x = THREE.MathUtils.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return x * x * (3 - 2 * x);
+}
+
+function easeTetraInOut(value) {
+  const x = THREE.MathUtils.clamp(value, 0, 1);
+  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+
+function easeTetraOut(value) {
+  const x = 1 - THREE.MathUtils.clamp(value, 0, 1);
+  return 1 - x * x * x;
+}
+
+function easeTetraIn(value) {
+  const x = THREE.MathUtils.clamp(value, 0, 1);
+  return x * x * x;
+}
+
+function applyTetraScreenLayout() {
+  tetraSelector.style.setProperty("--tetra-screen-x", `${tetraScreenX * 100}%`);
+  tetraSelector.style.setProperty("--tetra-screen-y", `${tetraScreenY * 100}%`);
+  tetraSelector.style.setProperty("--tetra-hit-scale", String(tetraVisualScale));
+}
+
+function resetTetraToIdle() {
+  tetraScreenX = TETRA_IDLE_X;
+  tetraScreenY = TETRA_IDLE_Y;
+  tetraVisualScale = TETRA_IDLE_SCALE;
+  tetraWorld.position.y = 0;
+  tetraObject.rotation.copy(tetraIdleRotation);
+  tetraObject.scale.setScalar(TETRA_IDLE_SCALE);
+  tetraHovered = false;
+  tetraMotionState = null;
+  applyTetraScreenLayout();
+}
+
+function updateTetraProgress() {
+  tetraStatusDots.forEach(dot => {
+    const faceNumber = Number(dot.dataset.tetraStatus);
+    const completed = tetraCompletedEvents.has(faceNumber);
+    dot.classList.toggle("is-completed", completed);
+    dot.setAttribute("aria-label", `事件 ${faceNumber} ${completed ? "已完成" : "未完成"}`);
+  });
+}
+
+function enterTetraPlaceholderEvent(faceNumber) {
+  tetraActiveFace = faceNumber;
+  const eventName = TETRA_EVENTS[faceNumber];
+  tetraSelector.classList.add("is-event-active");
+  tetraSelector.classList.remove("is-busy");
+  tetraPhase = "event";
+  resetTetraToIdle();
+  tetraSelector.dispatchEvent(new CustomEvent("tetra:event", {
+    detail: { face: faceNumber, event: eventName },
+    bubbles: true,
+  }));
+  if (faceNumber === 1) {
+    tetraSelector.classList.add("is-tetris-active");
+    tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+    window.setTimeout(startTetris, TETRIS_SCENE_FADE_DURATION);
+    return;
+  }
+  if (faceNumber === 2) {
+    tetraSelector.classList.remove("is-tetris-active");
+    tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+    openFilterModule();
+    return;
+  }
+  if (faceNumber === 3) {
+    tetraSelector.classList.remove("is-tetris-active");
+    tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+    openBreathingClock();
+    return;
+  }
+  if (faceNumber === 4) {
+    tetraSelector.classList.remove("is-tetris-active");
+    tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+    openGrandpaDialogue();
+    return;
+  }
+  tetraSelector.classList.remove("is-tetris-active");
+  tetraEventName.textContent = TETRA_EVENT_LABELS[eventName];
+  tetraEventPlaceholder.setAttribute("aria-hidden", "false");
+}
+
+function completeTetraPlaceholderEvent() {
+  if (tetraActiveFace === null) return;
+  const completedFace = tetraActiveFace;
+  const eventName = TETRA_EVENTS[completedFace];
+  tetraActiveFace = null;
+  tetraCompletedEvents.add(completedFace);
+  updateTetraProgress();
+  tetraSelector.classList.remove("is-event-active", "is-tetris-active");
+  tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+  tetraSelector.dispatchEvent(new CustomEvent("tetra:event-complete", {
+    detail: { face: completedFace, event: eventName },
+    bubbles: true,
+  }));
+
+  if (tetraCompletedEvents.size === 4) {
+    tetraLocked = true;
+    tetraPhase = "complete";
+    tetraSelector.classList.add("is-complete");
+    tetraHitTarget.setAttribute("aria-label", "四项体验已全部完成");
+    tetraRoundReset.hidden = false;
+    tetraSelector.dispatchEvent(new CustomEvent("tetra:all-complete", { bubbles: true }));
+    return;
+  }
+  tetraLocked = false;
+  tetraPhase = "idle";
+  tetraHitTarget.disabled = false;
+}
+
+function throwTetrahedron() {
+  if (tetraLocked || tetraActiveFace !== null || tetraCompletedEvents.size === 4) return;
+  const faceNumber = getNextTetraFace();
+  if (faceNumber === null) return;
+  tetraLocked = true;
+  playManagedAudio(tetraRollAudio, "dice roll");
+  tetraHovered = false;
+  tetraHitTarget.disabled = true;
+  tetraSelector.classList.add("is-busy");
+  tetraPhase = "moveToCenter";
+  tetraMotionState = {
+    faceNumber,
+    startTime: performance.now(),
+    startX: tetraScreenX,
+    startY: tetraScreenY,
+    startScale: tetraVisualScale,
+    startQuaternion: tetraObject.quaternion.clone(),
+    targetQuaternion: getTetraFaceTargetQuaternion(faceNumber),
+  };
+}
+
+function resetTetraRound() {
+  tetraCompletedEvents.clear();
+  tetraShuffleBag = createTetraShuffleBag();
+  tetraBagIndex = 0;
+  tetraRound += 1;
+  tetraLocked = false;
+  tetraHovered = false;
+  tetraPhase = "idle";
+  tetraActiveFace = null;
+  tetraMotionState = null;
+  tetraSelector.classList.remove("is-complete", "is-event-active", "is-busy", "is-tetris-active");
+  tetraEventPlaceholder.setAttribute("aria-hidden", "true");
+  tetraRoundReset.hidden = true;
+  tetraHitTarget.disabled = false;
+  tetraHitTarget.setAttribute("aria-label", "点击投掷正四面体");
+  resetTetraToIdle();
+  updateTetraProgress();
+}
+
+function applyTetraThrowRotation(progress) {
+  const spinQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+    TETRA_ROTATION_X * progress,
+    TETRA_ROTATION_Y * progress,
+    TETRA_ROTATION_Z * progress,
+    "XYZ"
+  ));
+  tetraObject.quaternion.copy(tetraMotionState.startQuaternion).multiply(spinQuaternion);
+}
+
+function beginTetraPhase(nextPhase, currentTime) {
+  tetraPhase = nextPhase;
+  tetraMotionState.startTime = currentTime;
+  if (nextPhase === "targetFaceAlign") {
+    tetraMotionState.alignStartQuaternion = tetraObject.quaternion.clone();
+  }
+}
+
+function updateTetraMotion(currentTime) {
+  if (!tetraMotionState) return;
+  const elapsed = currentTime - tetraMotionState.startTime;
+
+  if (tetraPhase === "moveToCenter") {
+    const progress = THREE.MathUtils.clamp(elapsed / TETRA_MOVE_TO_CENTER_DURATION, 0, 1);
+    const eased = easeTetraInOut(progress);
+    tetraScreenX = THREE.MathUtils.lerp(tetraMotionState.startX, TETRA_CENTER_X, eased);
+    tetraScreenY = THREE.MathUtils.lerp(tetraMotionState.startY, TETRA_CENTER_Y, eased);
+    tetraVisualScale = THREE.MathUtils.lerp(tetraMotionState.startScale, TETRA_THROW_SCALE, eased);
+    if (progress >= 1) beginTetraPhase("throwing", currentTime);
+    return;
+  }
+
+  if (tetraPhase === "throwing") {
+    const progress = THREE.MathUtils.clamp(elapsed / TETRA_THROW_DURATION, 0, 1);
+    tetraScreenY = TETRA_CENTER_Y - TETRA_THROW_HEIGHT * easeTetraOut(progress);
+    applyTetraThrowRotation(progress * 0.48);
+    if (progress >= 1) beginTetraPhase("falling", currentTime);
+    return;
+  }
+
+  if (tetraPhase === "falling") {
+    const progress = THREE.MathUtils.clamp(elapsed / TETRA_FALL_DURATION, 0, 1);
+    const landingY = TETRA_CENTER_Y + TETRA_BOUNCE_AMOUNT;
+    tetraScreenY = THREE.MathUtils.lerp(
+      TETRA_CENTER_Y - TETRA_THROW_HEIGHT,
+      landingY,
+      easeTetraIn(progress)
+    );
+    applyTetraThrowRotation(0.48 + progress * 0.44);
+    if (progress >= 1) beginTetraPhase("landing", currentTime);
+    return;
+  }
+
+  if (tetraPhase === "landing") {
+    const progress = THREE.MathUtils.clamp(elapsed / TETRA_LANDING_DURATION, 0, 1);
+    const landingY = TETRA_CENTER_Y + TETRA_BOUNCE_AMOUNT;
+    tetraScreenY = landingY
+      - Math.sin(progress * Math.PI) * TETRA_BOUNCE_AMOUNT * (1 - progress);
+    applyTetraThrowRotation(0.92 + progress * 0.08);
+    if (progress >= 1) beginTetraPhase("targetFaceAlign", currentTime);
+    return;
+  }
+
+  if (tetraPhase === "targetFaceAlign") {
+    const progress = THREE.MathUtils.clamp(elapsed / TETRA_FACE_ALIGN_DURATION, 0, 1);
+    const eased = smoothTetraStep(0, 1, progress);
+    tetraObject.quaternion.copy(tetraMotionState.alignStartQuaternion)
+      .slerp(tetraMotionState.targetQuaternion, eased);
+    if (progress >= 1) {
+      tetraObject.quaternion.copy(tetraMotionState.targetQuaternion);
+      beginTetraPhase("holdResult", currentTime);
+    }
+    return;
+  }
+
+  if (tetraPhase === "holdResult" && elapsed >= TETRA_RESULT_HOLD_DURATION) {
+    const resolvedFace = tetraMotionState.faceNumber;
+    tetraMotionState = null;
+    enterTetraPlaceholderEvent(resolvedFace);
+  }
+}
+
+function resizeTetraRenderer() {
+  const width = Math.round(tetraCanvas.clientWidth);
+  const height = Math.round(tetraCanvas.clientHeight);
+  if (!width || !height || (width === tetraRendererWidth && height === tetraRendererHeight)) return;
+  tetraRendererWidth = width;
+  tetraRendererHeight = height;
+  tetraRenderer.setSize(width, height, false);
+  tetraCamera.aspect = width / height;
+  tetraCamera.updateProjectionMatrix();
+}
+
+tetraHitTarget.addEventListener("pointerenter", () => {
+  if (!tetraLocked && tetraActiveFace === null) tetraHovered = true;
+});
+tetraHitTarget.addEventListener("pointerleave", () => {
+  tetraHovered = false;
+});
+tetraHitTarget.addEventListener("click", throwTetrahedron);
+tetraRoundReset.addEventListener("click", resetTetraRound);
+tetraEventReturn.addEventListener("click", completeTetraPlaceholderEvent);
+
+function animateTetraSelector(currentTime) {
+  const deltaTime = Math.min((currentTime - tetraLastFrameTime) / 1000, 0.05);
+  tetraLastFrameTime = currentTime;
+  resizeTetraRenderer();
+
+  if (tetraMotionState) {
+    updateTetraMotion(currentTime);
+  } else if (tetraPhase === "idle" && tetraCompletedEvents.size < 4) {
+    tetraObject.rotation.y += deltaTime * TETRA_IDLE_ROTATION_SPEED;
+    tetraObject.rotation.x += deltaTime * TETRA_IDLE_ROTATION_SPEED * 0.18;
+    tetraWorld.position.y = Math.sin(currentTime * 0.0011) * 0.045;
+  }
+
+  applyTetraScreenLayout();
+  const hoverScale = tetraHovered && !tetraLocked && tetraPhase === "idle" ? 1.06 : 1;
+  const nextScale = THREE.MathUtils.lerp(
+    tetraObject.scale.x,
+    tetraVisualScale * hoverScale,
+    1 - Math.exp(-10 * deltaTime)
+  );
+  tetraObject.scale.setScalar(nextScale);
+  if (currentState === "chapter4") tetraRenderer.render(tetraScene, tetraCamera);
+  window.requestAnimationFrame(animateTetraSelector);
+}
+
+tetraShuffleBag = createTetraShuffleBag();
+updateTetraProgress();
+tetraSelector.style.setProperty("--tetra-idle-x", `${TETRA_IDLE_X * 100}%`);
+tetraSelector.style.setProperty("--tetra-progress-y", `${(TETRA_IDLE_Y + 0.115) * 100}%`);
+resetTetraToIdle();
+window.requestAnimationFrame(animateTetraSelector);
+
+// 后续四个正式事件可监听 tetra:event，并在完成时调用 completeActiveEvent()。
+window.chapter4Tetra = Object.freeze({
+  events: TETRA_EVENTS,
+  completeActiveEvent: completeTetraPlaceholderEvent,
+  resetRound: resetTetraRound,
+  get completedCount() { return tetraCompletedEvents.size; },
+  get round() { return tetraRound; },
+});
+
+// 第四章俄罗斯方块：由正四面体 Face 1 进入，完成后返回选择器。
+const TETRIS_COLS = 10;
+const TETRIS_ROWS = 14;
+let TETRIS_CELL_SIZE = 26;
+const TETRIS_DROP_INTERVAL = 1100;
+const TETRIS_SOFT_DROP_INTERVAL = 55;
+const TETRIS_CLEAR_PAUSE = 150;
+const TETRIS_PARTICLE_DURATION = 620;
+const TETRIS_TEXT_FADE_DURATION = 280;
+const TETRIS_SCENE_FADE_DURATION = 320;
+const TETRIS_BUTTON_FEEDBACK_COOLDOWN = 120;
+const TETRIS_CELL_TEXT_SCALE = 0.48;
+const TETRIS_TEXT_FONT_FAMILY = '"Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", Arial, sans-serif';
+const TETRIS_CELL_COLOR = "#3fa9d5";
+const TETRIS_CELL_BORDER_COLOR = "#d5f2ff";
+const TETRIS_GRID_COLOR = "rgba(63, 169, 213, .22)";
+const TETRIS_BOARD_COLOR = "#f6f6f6";
+const TETRIS_SCORE_RULES = Object.freeze({ 1: 10, 2: 20, 3: 40, 4: 50 });
+const TETRIS_AUDIO = Object.freeze({
+  bgm: "./pic/forth/touzi/block_bgm.mp3",
+  move: "./pic/forth/touzi/block_move.mp3",
+  win: "./pic/forth/touzi/block_win.mp3",
+  gameOver: "./pic/forth/touzi/block_gameover.mp3",
+});
+const TETRIS_AUDIO_CONFIG = Object.freeze({
+  bgmVolume: 0.3,
+  moveVolume: 0.62,
+  winVolume: 0.72,
+  gameOverVolume: 0.72,
+});
+const TETRIS_MOVE_SFX_COOLDOWN = 90;
+const TETRIS_INFO_OFFSET_X = -180;
+const TETRIS_DEVICE_EXIT_LAYOUT = Object.freeze({ x: 0.899, y: 0.719, scale: 0.69 });
+
+const TETRIS_TEXT_GROUPS = Object.freeze({
+  2: Object.freeze(["错失", "比较", "高光", "落差", "反刍", "囤积", "刷新", "掉队", "缺席", "待命", "分心", "追赶"]),
+  3: Object.freeze(["错失感", "比较心", "认可欲", "存在感", "掉队感", "缺席感", "追热点", "怕错过", "怕落后", "不敢停"]),
+  4: Object.freeze(["信息过载", "社会比较", "信息囤积", "热点追赶", "害怕落后", "害怕错过", "持续刷新", "反复比较", "随时在线", "待命疲劳", "注意分散", "认可依赖", "缺席恐惧", "他人进度"]),
+});
+
+const TETRIS_PIECE_TEMPLATES = Object.freeze([
+  Object.freeze({ id: "domino-h", cellCount: 2, cells: Object.freeze([[0, 0], [1, 0]]) }),
+  Object.freeze({ id: "domino-v", cellCount: 2, cells: Object.freeze([[0, 0], [0, 1]]) }),
+  Object.freeze({ id: "tri-line", cellCount: 3, cells: Object.freeze([[0, 0], [1, 0], [2, 0]]) }),
+  Object.freeze({ id: "tri-l", cellCount: 3, cells: Object.freeze([[0, 0], [0, 1], [1, 1]]) }),
+  Object.freeze({ id: "tri-corner", cellCount: 3, cells: Object.freeze([[0, 0], [1, 0], [1, 1]]) }),
+  Object.freeze({ id: "tetra-i", cellCount: 4, cells: Object.freeze([[0, 0], [1, 0], [2, 0], [3, 0]]) }),
+  Object.freeze({ id: "tetra-o", cellCount: 4, cells: Object.freeze([[0, 0], [1, 0], [0, 1], [1, 1]]) }),
+  Object.freeze({ id: "tetra-t", cellCount: 4, cells: Object.freeze([[0, 0], [1, 0], [2, 0], [1, 1]]) }),
+  Object.freeze({ id: "tetra-l", cellCount: 4, cells: Object.freeze([[0, 0], [0, 1], [0, 2], [1, 2]]) }),
+  Object.freeze({ id: "tetra-s", cellCount: 4, cells: Object.freeze([[1, 0], [2, 0], [0, 1], [1, 1]]) }),
+  Object.freeze({ id: "tetra-z", cellCount: 4, cells: Object.freeze([[0, 0], [1, 0], [1, 1], [2, 1]]) }),
+]);
+
+const tetrisModule = document.querySelector(".tetris-module");
+const tetrisMachineRoot = document.querySelector(".tetris-machine-root");
+const tetrisMachineBase = document.querySelector(".tetris-machine-base");
+const tetrisMachineScreen = document.querySelector(".tetris-machine-screen");
+const tetrisArea = document.querySelector(".tetris-area");
+const tetrisGame = document.querySelector(".tetris-game");
+const tetrisMachineButtons = [...document.querySelectorAll("[data-tetris-control]")];
+const tetrisCanvas = document.querySelector("#tetris-canvas");
+const tetrisContext = tetrisCanvas.getContext("2d");
+const tetrisBoardWrap = document.querySelector(".tetris-board-wrap");
+const tetrisParticles = document.querySelector(".tetris-particles");
+const tetrisRestartButton = document.querySelector("[data-tetris-action='restart']");
+const tetrisExitButton = document.querySelector("[data-tetris-action='exit']");
+const tetrisDeviceExitButton = document.querySelector(".tetris-device-exit");
+const tetrisGameOver = document.querySelector(".tetris-game-over");
+const tetrisGameOverRestart = document.querySelector("[data-tetris-action='game-over-restart']");
+const tetrisInfoPanel = document.querySelector(".tetris-info-panel");
+const tetrisScoreElement = document.querySelector(".tetris-score");
+const tetrisNextCanvas = document.querySelector("#tetris-next-canvas");
+const tetrisNextContext = tetrisNextCanvas.getContext("2d");
+const tetrisBgmAudio = createManagedAudio(TETRIS_AUDIO.bgm, "Tetris BGM", {
+  loop: true,
+  volume: TETRIS_AUDIO_CONFIG.bgmVolume,
+});
+const tetrisMoveAudio = createManagedAudio(TETRIS_AUDIO.move, "Tetris move", {
+  volume: TETRIS_AUDIO_CONFIG.moveVolume,
+});
+const tetrisWinAudio = createManagedAudio(TETRIS_AUDIO.win, "Tetris line clear", {
+  volume: TETRIS_AUDIO_CONFIG.winVolume,
+});
+const tetrisGameOverAudio = createManagedAudio(TETRIS_AUDIO.gameOver, "Tetris game over", {
+  volume: TETRIS_AUDIO_CONFIG.gameOverVolume,
+});
+
+const TETRIS_MACHINE_LAYOUT = Object.freeze({
+  base: Object.freeze({ x: 0.504, y: 0.5, scale: 1 }),
+  screen: Object.freeze({ x: 0.5, y: 0.349, scale: 1 }),
+  area: Object.freeze({ x: 0.498, y: 0.345, width: 0.9199134199134199, height: 0.602 }),
+  buttons: Object.freeze({
+    up: Object.freeze({ x: 0.227, y: 0.759, scale: 0.85 }),
+    down: Object.freeze({ x: 0.227, y: 0.894, scale: 0.85 }),
+    left: Object.freeze({ x: 0.109, y: 0.83, scale: 0.85 }),
+    right: Object.freeze({ x: 0.349, y: 0.83, scale: 0.85 }),
+    rotate: Object.freeze({ x: 0.829, y: 0.89, scale: 0.82 }),
+  }),
+});
+
+let tetrisState = "exited";
+let tetrisBoard = [];
+let tetrisActivePiece = null;
+let tetrisDropTimer = null;
+let tetrisSoftDropTimer = null;
+let tetrisClearPauseTimer = null;
+let tetrisClearAnimationTimer = null;
+let tetrisTextFadeFrame = null;
+let tetrisExitTimer = null;
+let tetrisBoardPixelWidth = TETRIS_COLS * TETRIS_CELL_SIZE;
+let tetrisBoardPixelHeight = TETRIS_ROWS * TETRIS_CELL_SIZE;
+let tetrisScore = 0;
+let tetrisNextPiece = null;
+let tetrisCategoryBag = [];
+let tetrisPieceId = 0;
+let tetrisFadingRows = new Set();
+let tetrisTextFadeProgress = 0;
+let tetrisLastMoveSfxTime = -Infinity;
+const tetrisShapeBags = { 2: [], 3: [], 4: [] };
+const tetrisParticleTimers = new Set();
+const tetrisButtonFeedbackTimes = new Map();
+const tetrisButtonFeedbackTimers = new Map();
+
+tetrisInfoPanel.style.setProperty("--tetris-info-offset-x", `${TETRIS_INFO_OFFSET_X}px`);
+
+function updateTetrisDeviceExitLayout() {
+  tetrisDeviceExitButton.style.left = `${TETRIS_DEVICE_EXIT_LAYOUT.x * 100}%`;
+  tetrisDeviceExitButton.style.top = `${TETRIS_DEVICE_EXIT_LAYOUT.y * 100}%`;
+  tetrisDeviceExitButton.style.transform = `translate(-50%, -50%) scale(${TETRIS_DEVICE_EXIT_LAYOUT.scale})`;
+}
+
+function createEmptyTetrisBoard() {
+  return Array.from({ length: TETRIS_ROWS }, () => Array(TETRIS_COLS).fill(null));
+}
+
+function cloneTetrisCells(cells) {
+  return cells.map(cell => Array.isArray(cell)
+    ? { x: cell[0], y: cell[1], char: null }
+    : { x: cell.x, y: cell.y, char: cell.char ?? null });
+}
+
+function shuffleTetrisArray(values) {
+  const shuffled = [...values];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+function takeNextTetrisTemplate() {
+  if (tetrisCategoryBag.length === 0) tetrisCategoryBag = shuffleTetrisArray([2, 3, 4]);
+  const cellCount = tetrisCategoryBag.pop();
+  if (tetrisShapeBags[cellCount].length === 0) {
+    tetrisShapeBags[cellCount] = shuffleTetrisArray(
+      TETRIS_PIECE_TEMPLATES.filter(template => template.cellCount === cellCount)
+    );
+  }
+  return tetrisShapeBags[cellCount].pop();
+}
+
+function takeTetrisWord(cellCount) {
+  const words = TETRIS_TEXT_GROUPS[cellCount];
+  return words[Math.floor(Math.random() * words.length)];
+}
+
+function createTetrisPiece(template) {
+  const shape = cloneTetrisCells(template.cells);
+  const word = takeTetrisWord(template.cellCount);
+  const chars = [...word];
+  const sortedCells = [...shape].sort((a, b) => a.y - b.y || a.x - b.x);
+  sortedCells.forEach((cell, index) => {
+    cell.char = chars[index];
+  });
+  const pieceId = `tetris-piece-${++tetrisPieceId}`;
+  return {
+    pieceId,
+    shapeId: template.id,
+    templateId: template.id,
+    cellCount: template.cellCount,
+    shape: template.cells,
+    cells: shape,
+    textGroupSize: template.cellCount,
+    assignedText: word,
+    word,
+    chars,
+    rotation: 0,
+    x: Math.floor((TETRIS_COLS - getTetrisPieceWidth(shape)) / 2),
+    y: 0,
+  };
+}
+
+function getTetrisPieceWidth(cells) {
+  return Math.max(...cells.map(cell => cell.x)) + 1;
+}
+
+function renderTetrisScore() {
+  tetrisScoreElement.value = String(tetrisScore).padStart(6, "0");
+  tetrisScoreElement.textContent = String(tetrisScore).padStart(6, "0");
+}
+
+function renderNextTetrisPiece() {
+  const width = 160;
+  const height = 120;
+  const previewCellSize = 22;
+  tetrisNextCanvas.width = width;
+  tetrisNextCanvas.height = height;
+  tetrisNextContext.clearRect(0, 0, width, height);
+  if (!tetrisNextPiece) return;
+  const cells = tetrisNextPiece.shape;
+  const minX = Math.min(...cells.map(([x]) => x));
+  const maxX = Math.max(...cells.map(([x]) => x));
+  const minY = Math.min(...cells.map(([, y]) => y));
+  const maxY = Math.max(...cells.map(([, y]) => y));
+  const shapeWidth = (maxX - minX + 1) * previewCellSize;
+  const shapeHeight = (maxY - minY + 1) * previewCellSize;
+  const startX = (width - shapeWidth) / 2;
+  const startY = (height - shapeHeight) / 2;
+  cells.forEach(([x, y]) => {
+    const drawX = startX + (x - minX) * previewCellSize;
+    const drawY = startY + (y - minY) * previewCellSize;
+    tetrisNextContext.fillStyle = TETRIS_CELL_COLOR;
+    tetrisNextContext.fillRect(drawX + 1, drawY + 1, previewCellSize - 2, previewCellSize - 2);
+    tetrisNextContext.strokeStyle = TETRIS_CELL_BORDER_COLOR;
+    tetrisNextContext.strokeRect(drawX + 1.5, drawY + 1.5, previewCellSize - 3, previewCellSize - 3);
+  });
+}
+
+function applyTetrisMachineLayer(element, layout) {
+  element.style.left = `${layout.x * 100}%`;
+  element.style.top = `${layout.y * 100}%`;
+  element.style.setProperty("--machine-layer-scale", String(layout.scale));
+}
+
+function layoutTetrisBoardToArea() {
+  if (!tetrisModule.classList.contains("is-active")) return;
+  const areaRect = tetrisArea.getBoundingClientRect();
+  if (!areaRect.width || !areaRect.height) return;
+  TETRIS_CELL_SIZE = Math.min(
+    areaRect.width / TETRIS_COLS,
+    areaRect.height / TETRIS_ROWS
+  );
+  tetrisBoardPixelWidth = TETRIS_COLS * TETRIS_CELL_SIZE;
+  tetrisBoardPixelHeight = TETRIS_ROWS * TETRIS_CELL_SIZE;
+  const boardOffsetX = (areaRect.width - tetrisBoardPixelWidth) / 2;
+  const boardOffsetY = (areaRect.height - tetrisBoardPixelHeight) / 2;
+  tetrisGame.style.left = `${boardOffsetX}px`;
+  tetrisGame.style.top = `${boardOffsetY}px`;
+  tetrisGame.style.width = `${tetrisBoardPixelWidth}px`;
+  tetrisGame.style.height = `${tetrisBoardPixelHeight}px`;
+  tetrisBoardWrap.style.setProperty("--tetris-board-width", `${tetrisBoardPixelWidth}px`);
+  tetrisBoardWrap.style.setProperty("--tetris-board-height", `${tetrisBoardPixelHeight}px`);
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  tetrisCanvas.width = Math.max(1, Math.round(tetrisBoardPixelWidth * pixelRatio));
+  tetrisCanvas.height = Math.max(1, Math.round(tetrisBoardPixelHeight * pixelRatio));
+  tetrisContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  renderTetris();
+}
+
+function applyTetrisMachineLayout() {
+  applyTetrisMachineLayer(tetrisMachineBase, TETRIS_MACHINE_LAYOUT.base);
+  applyTetrisMachineLayer(tetrisMachineScreen, TETRIS_MACHINE_LAYOUT.screen);
+  const area = TETRIS_MACHINE_LAYOUT.area;
+  tetrisArea.style.left = `${(area.x - area.width / 2) * 100}%`;
+  tetrisArea.style.top = `${(area.y - area.height / 2) * 100}%`;
+  tetrisArea.style.width = `${area.width * 100}%`;
+  tetrisArea.style.height = `${area.height * 100}%`;
+  tetrisMachineButtons.forEach(button => {
+    const control = button.dataset.tetrisControl;
+    const layout = TETRIS_MACHINE_LAYOUT.buttons[control];
+    button.style.left = `${layout.x * 100}%`;
+    button.style.top = `${layout.y * 100}%`;
+    button.style.setProperty("--machine-button-scale", String(layout.scale));
+  });
+  window.requestAnimationFrame(layoutTetrisBoardToArea);
+}
+
+function playTetrisButtonFeedback(control) {
+  const button = tetrisMachineButtons.find(item => item.dataset.tetrisControl === control);
+  if (!button) return;
+  const now = performance.now();
+  const lastTime = tetrisButtonFeedbackTimes.get(control) || -Infinity;
+  if (now - lastTime < TETRIS_BUTTON_FEEDBACK_COOLDOWN) return;
+  tetrisButtonFeedbackTimes.set(control, now);
+  button.classList.remove("is-pressed");
+  void button.offsetWidth;
+  button.classList.add("is-pressed");
+  const previousTimer = tetrisButtonFeedbackTimers.get(control);
+  if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+  const timer = window.setTimeout(() => {
+    button.classList.remove("is-pressed");
+    tetrisButtonFeedbackTimers.delete(control);
+  }, 240);
+  tetrisButtonFeedbackTimers.set(control, timer);
+}
+
+function playTetrisMoveSfx() {
+  const now = performance.now();
+  if (now - tetrisLastMoveSfxTime < TETRIS_MOVE_SFX_COOLDOWN) return;
+  tetrisLastMoveSfxTime = now;
+  playManagedAudio(tetrisMoveAudio, "Tetris move");
+}
+
+function restartTetrisAudio() {
+  stopManagedAudio(tetrisMoveAudio);
+  stopManagedAudio(tetrisWinAudio);
+  stopManagedAudio(tetrisGameOverAudio);
+  stopManagedAudio(tetrisBgmAudio);
+  tetrisLastMoveSfxTime = -Infinity;
+  playManagedAudio(tetrisBgmAudio, "Tetris BGM");
+}
+
+function stopTetrisAudio() {
+  stopManagedAudio(tetrisBgmAudio);
+  stopManagedAudio(tetrisMoveAudio);
+  stopManagedAudio(tetrisWinAudio);
+  stopManagedAudio(tetrisGameOverAudio);
+  tetrisLastMoveSfxTime = -Infinity;
+}
+
+function stopTetrisDropTimer() {
+  if (tetrisDropTimer !== null) window.clearInterval(tetrisDropTimer);
+  tetrisDropTimer = null;
+}
+
+function stopTetrisSoftDrop() {
+  if (tetrisSoftDropTimer !== null) window.clearInterval(tetrisSoftDropTimer);
+  tetrisSoftDropTimer = null;
+}
+
+function clearTetrisRuntime() {
+  stopTetrisDropTimer();
+  stopTetrisSoftDrop();
+  if (tetrisClearPauseTimer !== null) window.clearTimeout(tetrisClearPauseTimer);
+  if (tetrisClearAnimationTimer !== null) window.clearTimeout(tetrisClearAnimationTimer);
+  if (tetrisExitTimer !== null) window.clearTimeout(tetrisExitTimer);
+  if (tetrisTextFadeFrame !== null) window.cancelAnimationFrame(tetrisTextFadeFrame);
+  tetrisClearPauseTimer = null;
+  tetrisClearAnimationTimer = null;
+  tetrisExitTimer = null;
+  tetrisTextFadeFrame = null;
+  tetrisFadingRows.clear();
+  tetrisTextFadeProgress = 0;
+  tetrisParticleTimers.forEach(timer => window.clearTimeout(timer));
+  tetrisParticleTimers.clear();
+  tetrisButtonFeedbackTimers.forEach(timer => window.clearTimeout(timer));
+  tetrisButtonFeedbackTimers.clear();
+  tetrisButtonFeedbackTimes.clear();
+  tetrisMachineButtons.forEach(button => button.classList.remove("is-pressed"));
+  tetrisParticles.replaceChildren();
+  window.removeEventListener("keydown", handleTetrisKeyDown);
+  window.removeEventListener("keyup", handleTetrisKeyUp);
+}
+
+function initTetris() {
+  tetrisCanvas.width = TETRIS_COLS * TETRIS_CELL_SIZE;
+  tetrisCanvas.height = TETRIS_ROWS * TETRIS_CELL_SIZE;
+  tetrisBoardPixelWidth = tetrisCanvas.width;
+  tetrisBoardPixelHeight = tetrisCanvas.height;
+  tetrisBoard = createEmptyTetrisBoard();
+  applyTetrisMachineLayout();
+  renderTetrisScore();
+  renderNextTetrisPiece();
+  renderTetris();
+}
+
+function startTetrisDropTimer() {
+  stopTetrisDropTimer();
+  tetrisDropTimer = window.setInterval(() => {
+    if (tetrisState !== "playing") return;
+    if (!movePiece(0, 1)) lockPiece();
+  }, TETRIS_DROP_INTERVAL);
+}
+
+function startTetris() {
+  tetrisModule.classList.remove("is-leaving");
+  tetrisModule.classList.add("is-active");
+  tetrisModule.setAttribute("aria-hidden", "false");
+  applyTetrisMachineLayout();
+  resetTetris();
+}
+
+function resetTetris() {
+  clearTetrisRuntime();
+  restartTetrisAudio();
+  tetrisBoard = createEmptyTetrisBoard();
+  tetrisActivePiece = null;
+  tetrisScore = 0;
+  tetrisNextPiece = null;
+  tetrisCategoryBag = [];
+  tetrisPieceId = 0;
+  tetrisFadingRows.clear();
+  tetrisTextFadeProgress = 0;
+  tetrisShapeBags[2] = [];
+  tetrisShapeBags[3] = [];
+  tetrisShapeBags[4] = [];
+  tetrisState = "playing";
+  tetrisArea.classList.remove("has-game-over");
+  tetrisGameOver.classList.remove("is-visible");
+  tetrisGameOver.setAttribute("aria-hidden", "true");
+  window.addEventListener("keydown", handleTetrisKeyDown);
+  window.addEventListener("keyup", handleTetrisKeyUp);
+  tetrisNextPiece = createTetrisPiece(takeNextTetrisTemplate());
+  spawnPiece();
+  startTetrisDropTimer();
+  renderTetrisScore();
+  renderTetris();
+  window.requestAnimationFrame(layoutTetrisBoardToArea);
+  tetrisModule.focus({ preventScroll: true });
+}
+
+function spawnPiece() {
+  if (tetrisState !== "playing") return;
+  tetrisActivePiece = tetrisNextPiece || createTetrisPiece(takeNextTetrisTemplate());
+  tetrisActivePiece.x = Math.floor((TETRIS_COLS - getTetrisPieceWidth(tetrisActivePiece.cells)) / 2);
+  tetrisActivePiece.y = 0;
+  tetrisNextPiece = createTetrisPiece(takeNextTetrisTemplate());
+  renderNextTetrisPiece();
+  if (!canMove(tetrisActivePiece, 0, 0)) {
+    tetrisActivePiece = null;
+    gameOverTetris();
+    return;
+  }
+  renderTetris();
+}
+
+function canMove(piece, dx, dy, nextCells = piece.cells) {
+  return nextCells.every(cell => {
+    const x = piece.x + cell.x + dx;
+    const y = piece.y + cell.y + dy;
+    if (x < 0 || x >= TETRIS_COLS || y >= TETRIS_ROWS) return false;
+    if (y < 0) return true;
+    return tetrisBoard[y][x] === null;
+  });
+}
+
+function movePiece(dx, dy) {
+  if (tetrisState !== "playing" || !tetrisActivePiece) return false;
+  if (!canMove(tetrisActivePiece, dx, dy)) return false;
+  tetrisActivePiece.x += dx;
+  tetrisActivePiece.y += dy;
+  renderTetris();
+  return true;
+}
+
+function rotatePiece() {
+  if (tetrisState !== "playing" || !tetrisActivePiece) return;
+  const rotated = tetrisActivePiece.cells.map(cell => ({
+    x: -cell.y,
+    y: cell.x,
+    char: cell.char,
+  }));
+  const minX = Math.min(...rotated.map(cell => cell.x));
+  const minY = Math.min(...rotated.map(cell => cell.y));
+  const normalized = rotated.map(cell => ({
+    x: cell.x - minX,
+    y: cell.y - minY,
+    char: cell.char,
+  }));
+  if (!canMove(tetrisActivePiece, 0, 0, normalized)) return;
+  tetrisActivePiece.cells = normalized;
+  tetrisActivePiece.rotation = (tetrisActivePiece.rotation + 1) % 4;
+  renderTetris();
+}
+
+function hardDrop() {
+  if (tetrisState !== "playing" || !tetrisActivePiece) return false;
+  let moved = false;
+  while (canMove(tetrisActivePiece, 0, 1)) {
+    tetrisActivePiece.y += 1;
+    moved = true;
+  }
+  renderTetris();
+  lockPiece();
+  return moved;
+}
+
+function lockPiece() {
+  if (tetrisState !== "playing" || !tetrisActivePiece) return;
+  const lockingPiece = tetrisActivePiece;
+  const touchesTop = lockingPiece.cells.some(cell => lockingPiece.y + cell.y <= 0);
+  lockingPiece.cells.forEach(cell => {
+    const x = lockingPiece.x + cell.x;
+    const y = lockingPiece.y + cell.y;
+    if (y >= 0 && y < TETRIS_ROWS) {
+      tetrisBoard[y][x] = {
+        occupied: true,
+        color: TETRIS_CELL_COLOR,
+        char: cell.char,
+        pieceId: lockingPiece.pieceId,
+      };
+    }
+  });
+  tetrisActivePiece = null;
+  stopTetrisSoftDrop();
+  const completedRows = checkCompletedRows();
+  renderTetris();
+
+  if (touchesTop) {
+    gameOverTetris();
+    return;
+  }
+
+  if (completedRows.length === 0) {
+    spawnPiece();
+    return;
+  }
+
+  playManagedAudio(tetrisWinAudio, "Tetris line clear");
+  stopTetrisDropTimer();
+  tetrisClearPauseTimer = window.setTimeout(() => {
+    tetrisClearPauseTimer = null;
+    startTetrisTextFade(completedRows);
+    spawnClearParticles(completedRows);
+    tetrisClearAnimationTimer = window.setTimeout(() => {
+      tetrisClearAnimationTimer = null;
+      clearRows(completedRows);
+    }, TETRIS_PARTICLE_DURATION);
+  }, TETRIS_CLEAR_PAUSE);
+}
+
+function checkCompletedRows() {
+  const completedRows = [];
+  tetrisBoard.forEach((row, rowIndex) => {
+    if (row.every(Boolean)) completedRows.push(rowIndex);
+  });
+  return completedRows;
+}
+
+function startTetrisTextFade(completedRows) {
+  if (tetrisTextFadeFrame !== null) window.cancelAnimationFrame(tetrisTextFadeFrame);
+  tetrisFadingRows = new Set(completedRows);
+  tetrisTextFadeProgress = 0;
+  const startTime = performance.now();
+  const updateFade = currentTime => {
+    tetrisTextFadeProgress = THREE.MathUtils.clamp(
+      (currentTime - startTime) / TETRIS_TEXT_FADE_DURATION,
+      0,
+      1
+    );
+    renderTetris();
+    if (tetrisTextFadeProgress < 1) {
+      tetrisTextFadeFrame = window.requestAnimationFrame(updateFade);
+    } else {
+      tetrisTextFadeFrame = null;
+    }
+  };
+  tetrisTextFadeFrame = window.requestAnimationFrame(updateFade);
+}
+
+function spawnClearParticles(completedRows) {
+  completedRows.forEach(rowIndex => {
+    for (let column = 0; column < TETRIS_COLS; column += 1) {
+      const particleCount = THREE.MathUtils.randInt(4, 6);
+      for (let index = 0; index < particleCount; index += 1) {
+        const particle = document.createElement("span");
+        const size = THREE.MathUtils.randFloat(3, 7);
+        const duration = THREE.MathUtils.randInt(400, 600);
+        particle.className = "tetris-particle";
+        particle.style.left = `${column * TETRIS_CELL_SIZE + TETRIS_CELL_SIZE / 2 - size / 2}px`;
+        particle.style.top = `${rowIndex * TETRIS_CELL_SIZE + TETRIS_CELL_SIZE / 2 - size / 2}px`;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${THREE.MathUtils.randFloat(2, 6)}px`;
+        particle.style.transition = `transform ${duration}ms ease-out, opacity ${duration}ms ease-out`;
+        tetrisParticles.appendChild(particle);
+        window.requestAnimationFrame(() => {
+          particle.style.transform = `translate(${THREE.MathUtils.randFloat(-40, 40)}px, ${THREE.MathUtils.randFloat(-30, 30)}px) rotate(${THREE.MathUtils.randFloat(-150, 150)}deg) scale(.2)`;
+          particle.style.opacity = "0";
+        });
+        const removalTimer = window.setTimeout(() => {
+          tetrisParticleTimers.delete(removalTimer);
+          particle.remove();
+        }, duration + 40);
+        tetrisParticleTimers.add(removalTimer);
+      }
+    }
+  });
+}
+
+function clearRows(completedRows) {
+  const completedSet = new Set(completedRows);
+  tetrisBoard = tetrisBoard.filter((_, rowIndex) => !completedSet.has(rowIndex));
+  while (tetrisBoard.length < TETRIS_ROWS) {
+    tetrisBoard.unshift(Array(TETRIS_COLS).fill(null));
+  }
+  tetrisFadingRows.clear();
+  tetrisTextFadeProgress = 0;
+  tetrisScore += TETRIS_SCORE_RULES[Math.min(completedRows.length, 4)] || 0;
+  renderTetrisScore();
+  renderTetris();
+  spawnPiece();
+  startTetrisDropTimer();
+}
+
+function drawTetrisCell(x, y, cell, textOpacity = 1) {
+  const inset = 1;
+  tetrisContext.fillStyle = cell?.color || TETRIS_CELL_COLOR;
+  tetrisContext.fillRect(
+    x * TETRIS_CELL_SIZE + inset,
+    y * TETRIS_CELL_SIZE + inset,
+    TETRIS_CELL_SIZE - inset * 2,
+    TETRIS_CELL_SIZE - inset * 2
+  );
+  tetrisContext.strokeStyle = TETRIS_CELL_BORDER_COLOR;
+  tetrisContext.strokeRect(
+    x * TETRIS_CELL_SIZE + 1.5,
+    y * TETRIS_CELL_SIZE + 1.5,
+    TETRIS_CELL_SIZE - 3,
+    TETRIS_CELL_SIZE - 3
+  );
+  if (!cell?.char || textOpacity <= 0) return;
+  const fontSize = Math.max(10, TETRIS_CELL_SIZE * TETRIS_CELL_TEXT_SCALE);
+  tetrisContext.save();
+  tetrisContext.globalAlpha = textOpacity;
+  tetrisContext.fillStyle = "#000000";
+  tetrisContext.font = `500 ${fontSize}px ${TETRIS_TEXT_FONT_FAMILY}`;
+  tetrisContext.textAlign = "center";
+  tetrisContext.textBaseline = "middle";
+  tetrisContext.fillText(
+    cell.char,
+    x * TETRIS_CELL_SIZE + TETRIS_CELL_SIZE / 2,
+    y * TETRIS_CELL_SIZE + TETRIS_CELL_SIZE / 2
+  );
+  tetrisContext.restore();
+}
+
+function renderTetris() {
+  tetrisContext.clearRect(0, 0, tetrisBoardPixelWidth, tetrisBoardPixelHeight);
+  tetrisContext.fillStyle = TETRIS_BOARD_COLOR;
+  tetrisContext.fillRect(0, 0, tetrisBoardPixelWidth, tetrisBoardPixelHeight);
+  tetrisContext.strokeStyle = TETRIS_GRID_COLOR;
+  tetrisContext.lineWidth = 1;
+  for (let column = 0; column <= TETRIS_COLS; column += 1) {
+    const x = column * TETRIS_CELL_SIZE + 0.5;
+    tetrisContext.beginPath();
+    tetrisContext.moveTo(x, 0);
+    tetrisContext.lineTo(x, tetrisBoardPixelHeight);
+    tetrisContext.stroke();
+  }
+  for (let row = 0; row <= TETRIS_ROWS; row += 1) {
+    const y = row * TETRIS_CELL_SIZE + 0.5;
+    tetrisContext.beginPath();
+    tetrisContext.moveTo(0, y);
+    tetrisContext.lineTo(tetrisBoardPixelWidth, y);
+    tetrisContext.stroke();
+  }
+  tetrisBoard.forEach((row, y) => {
+    row.forEach((cell, x) => {
+      if (cell) {
+        const textOpacity = tetrisFadingRows.has(y) ? 1 - tetrisTextFadeProgress : 1;
+        drawTetrisCell(x, y, cell, textOpacity);
+      }
+    });
+  });
+  if (!tetrisActivePiece) return;
+  tetrisActivePiece.cells.forEach(cell => {
+    drawTetrisCell(
+      tetrisActivePiece.x + cell.x,
+      tetrisActivePiece.y + cell.y,
+      { color: TETRIS_CELL_COLOR, char: cell.char }
+    );
+  });
+}
+
+function gameOverTetris() {
+  if (tetrisState === "gameOver") return;
+  tetrisState = "gameOver";
+  tetrisActivePiece = null;
+  stopTetrisDropTimer();
+  stopTetrisSoftDrop();
+  window.removeEventListener("keydown", handleTetrisKeyDown);
+  window.removeEventListener("keyup", handleTetrisKeyUp);
+  stopManagedAudio(tetrisBgmAudio, { reset: false });
+  stopManagedAudio(tetrisMoveAudio);
+  stopManagedAudio(tetrisWinAudio);
+  playManagedAudio(tetrisGameOverAudio, "Tetris game over");
+  renderTetris();
+  tetrisArea.classList.add("has-game-over");
+  tetrisGameOver.classList.add("is-visible");
+  tetrisGameOver.setAttribute("aria-hidden", "false");
+}
+
+function exitTetrisEvent() {
+  if (!tetrisModule.classList.contains("is-active")) return;
+  clearTetrisRuntime();
+  stopTetrisAudio();
+  tetrisState = "exited";
+  tetrisActivePiece = null;
+  tetrisModule.classList.add("is-leaving");
+  tetrisExitTimer = window.setTimeout(() => {
+    tetrisExitTimer = null;
+    destroyTetris();
+    if (tetraActiveFace === 1) completeTetraPlaceholderEvent();
+  }, TETRIS_SCENE_FADE_DURATION);
+}
+
+function destroyTetris() {
+  clearTetrisRuntime();
+  stopTetrisAudio();
+  tetrisState = "exited";
+  tetrisActivePiece = null;
+  tetrisScore = 0;
+  tetrisNextPiece = null;
+  tetrisBoard = createEmptyTetrisBoard();
+  tetrisArea.classList.remove("has-game-over");
+  tetrisGameOver.classList.remove("is-visible");
+  tetrisGameOver.setAttribute("aria-hidden", "true");
+  tetrisModule.classList.remove("is-active", "is-leaving");
+  tetrisModule.setAttribute("aria-hidden", "true");
+  renderTetrisScore();
+  renderNextTetrisPiece();
+  renderTetris();
+}
+
+function triggerGameControl(control) {
+  if (tetrisState !== "playing" || !tetrisModule.classList.contains("is-active")) return;
+  playTetrisButtonFeedback(control);
+  let moved = false;
+  if (control === "left") moved = movePiece(-1, 0);
+  else if (control === "right") moved = movePiece(1, 0);
+  else if (control === "down") {
+    moved = movePiece(0, 1);
+    if (!moved) lockPiece();
+  } else if (control === "up") moved = hardDrop();
+  else if (control === "rotate") rotatePiece();
+  if (moved) playTetrisMoveSfx();
+}
+
+function handleTetrisKeyDown(event) {
+  if (tetrisState !== "playing" || !tetrisModule.classList.contains("is-active")) return;
+  if (event.target instanceof Element && event.target.closest("button, input, select")) return;
+  if (["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Space"].includes(event.code)) {
+    event.preventDefault();
+  }
+  if (event.code === "ArrowLeft") triggerGameControl("left");
+  else if (event.code === "ArrowRight") triggerGameControl("right");
+  else if (event.code === "ArrowUp") triggerGameControl("up");
+  else if (event.code === "Space") triggerGameControl("rotate");
+  else if (event.code === "ArrowDown" && !event.repeat && tetrisSoftDropTimer === null) {
+    tetrisSoftDropTimer = window.setInterval(() => {
+      triggerGameControl("down");
+    }, TETRIS_SOFT_DROP_INTERVAL);
+    triggerGameControl("down");
+  }
+}
+
+function handleTetrisKeyUp(event) {
+  if (event.code === "ArrowDown") stopTetrisSoftDrop();
+}
+
+tetrisRestartButton.addEventListener("click", () => {
+  resetTetris();
+});
+tetrisGameOverRestart.addEventListener("click", resetTetris);
+tetrisExitButton.addEventListener("click", exitTetrisEvent);
+tetrisDeviceExitButton.addEventListener("click", exitTetrisEvent);
+tetrisMachineButtons.forEach(button => {
+  button.addEventListener("pointerdown", event => event.preventDefault());
+  button.addEventListener("click", () => {
+    triggerGameControl(button.dataset.tetrisControl);
+    tetrisModule.focus({ preventScroll: true });
+  });
+});
+window.addEventListener("resize", layoutTetrisBoardToArea);
+const tetrisMachineResizeObserver = new ResizeObserver(layoutTetrisBoardToArea);
+tetrisMachineResizeObserver.observe(tetrisMachineRoot);
+updateTetrisDeviceExitLayout();
+initTetris();
+
+// 第四章 4-6 呼吸钟：独立循环引导器，暂不与正四面体事件联动。
+const BREATH_ASSETS = Object.freeze({
+  clockFace: "./pic/forth/touzi/clock_face.png",
+  morningGif: "./pic/forth/touzi/morning.gif",
+  eveningGif: "./pic/forth/touzi/evening.gif",
+  ping: "./pic/forth/touzi/ding.wav",
+  morningAudio: "./pic/forth/touzi/morning.mp3",
+  eveningAudio: "./pic/forth/touzi/evening.mp3",
+});
+const BREATH_AUDIO = Object.freeze({
+  ping: Object.freeze({ src: BREATH_ASSETS.ping, volume: 0.82 }),
+  morning: Object.freeze({ src: BREATH_ASSETS.morningAudio, volume: 0.36 }),
+  evening: Object.freeze({ src: BREATH_ASSETS.eveningAudio, volume: 0.36 }),
+});
+const BREATH_CYCLE_DURATION = 10000;
+const BREATH_INHALE_DURATION = 4000;
+const PING_VOLUME_MULTIPLIER = 0.5;
+const BREATH_CLOCK_SCALE = 0.65;
+const BREATH_STATUS_OFFSET_Y = 12;
+const BREATH_INTRO_TYPE_INTERVAL = 45;
+const BREATH_INTRO_HOLD_DURATION = 1000;
+const BREATH_INTRO_FADE_DURATION = 500;
+const BREATH_CLOCK_REVEAL_DURATION = 760;
+const BREATH_INTRO_TEXT = "4-6 呼吸法能快速激活副交感神经，让心跳慢下来、身体从警觉切回平静，适合在焦虑、刷手机停不下来或睡前用来给自己踩一脚刹车，请试试吧。";
+const CLOCK_CENTER_X = 50;
+const CLOCK_CENTER_Y = 50;
+const PULL_HANDLE_SIZE = 18;
+const PULL_TOP_X = 60;
+const PULL_TOP_Y = 8;
+const PULL_IDLE_Y = 190;
+const PULL_MAX_OFFSET = 76;
+const PULL_TRIGGER_OFFSET = 34;
+const PULL_OVERSHOOT_Y = 58;
+const PULL_SETTLE_DURATION = 980;
+
+const breathingClockModule = document.querySelector(".breathing-clock-module");
+const breathingClockIntro = document.querySelector(".breathing-clock-intro");
+const breathingClockStage = document.querySelector(".breathing-clock-stage");
+const breathingClockVisualViewport = document.querySelector(".breathing-clock-visual-viewport");
+const breathingClockRoot = document.querySelector(".breathing-clock-root");
+const breathingClockFace = document.querySelector(".breathing-clock-face");
+const breathingClockMorning = document.querySelector(".breathing-clock-gif--morning");
+const breathingClockEvening = document.querySelector(".breathing-clock-gif--evening");
+const breathingClockStatus = document.querySelector(".breathing-clock-status");
+const breathingClockDing = document.querySelector(".breathing-clock-ding");
+const breathingMorningAudio = document.querySelector(".breathing-clock-audio--morning");
+const breathingEveningAudio = document.querySelector(".breathing-clock-audio--evening");
+const breathingClockStart = document.querySelector("[data-breathing-action='start']");
+const breathingClockReset = document.querySelector("[data-breathing-action='reset']");
+const breathingClockClose = document.querySelector("[data-breathing-action='close']");
+const breathingPullSwitch = document.querySelector(".breathing-pull-switch");
+const breathingSwitchPath = document.querySelector(".breathing-switch-path");
+const breathingSwitchHandle = document.querySelector(".breathing-switch-handle");
+
+const breathingClockState = {
+  running: false,
+  startTime: 0,
+  elapsed: 0,
+  currentCycleIndex: 0,
+  cycleProgress: 0,
+  phase: "inhale",
+  startCueTriggeredCycle: -1,
+  midCueTriggeredCycle: -1,
+  mode: "morning",
+};
+let breathingRAFId = null;
+let breathingPullRAFId = null;
+let breathingPullPointerId = null;
+let breathingPullStartY = 0;
+let breathingPullOffset = 0;
+let breathingSwitchLocked = false;
+let breathingIntroTypeTimer = null;
+let breathingIntroHoldTimer = null;
+let breathingIntroFinishTimer = null;
+
+breathingClockFace.src = BREATH_ASSETS.clockFace;
+breathingClockMorning.src = BREATH_ASSETS.morningGif;
+breathingClockEvening.src = BREATH_ASSETS.eveningGif;
+breathingClockDing.src = BREATH_AUDIO.ping.src;
+breathingMorningAudio.src = BREATH_AUDIO.morning.src;
+breathingEveningAudio.src = BREATH_AUDIO.evening.src;
+breathingMorningAudio.loop = true;
+breathingEveningAudio.loop = true;
+breathingClockRoot.style.setProperty("--clock-center-x", `${CLOCK_CENTER_X}%`);
+breathingClockRoot.style.setProperty("--clock-center-y", `${CLOCK_CENTER_Y}%`);
+breathingClockRoot.style.setProperty("--pull-handle-size", `${PULL_HANDLE_SIZE}px`);
+breathingClockStage.style.setProperty("--breath-status-offset-y", `${BREATH_STATUS_OFFSET_Y}px`);
+
+[
+  ["ping", breathingClockDing],
+  ["morning", breathingMorningAudio],
+  ["evening", breathingEveningAudio],
+].forEach(([name, audio]) => {
+  audio.addEventListener("error", () => {
+    console.warn(`[breathing clock] ${name} audio unavailable: ${audio.currentSrc || audio.src}`);
+  });
+});
+
+function layoutBreathingClock() {
+  const compact = window.innerWidth <= 760;
+  const baseHeight = Math.min(window.innerHeight * (compact ? 0.7 : 0.78), compact ? 560 : 650);
+  const baseWidth = baseHeight * (572 / 665);
+  const scaledWidth = baseWidth * BREATH_CLOCK_SCALE;
+  const scaledHeight = baseHeight * BREATH_CLOCK_SCALE;
+  breathingClockRoot.style.width = `${baseWidth}px`;
+  breathingClockRoot.style.height = `${baseHeight}px`;
+  breathingClockRoot.style.transform = `scale(${BREATH_CLOCK_SCALE})`;
+  breathingClockVisualViewport.style.width = `${scaledWidth}px`;
+  breathingClockVisualViewport.style.height = `${scaledHeight}px`;
+}
+
+function clearBreathingIntroTimers() {
+  if (breathingIntroTypeTimer !== null) window.clearTimeout(breathingIntroTypeTimer);
+  if (breathingIntroHoldTimer !== null) window.clearTimeout(breathingIntroHoldTimer);
+  if (breathingIntroFinishTimer !== null) window.clearTimeout(breathingIntroFinishTimer);
+  breathingIntroTypeTimer = null;
+  breathingIntroHoldTimer = null;
+  breathingIntroFinishTimer = null;
+}
+
+function finishBreathingIntro() {
+  breathingClockModule.classList.remove("is-intro");
+  breathingClockModule.classList.add("is-revealing");
+  breathingIntroFinishTimer = window.setTimeout(() => {
+    breathingIntroFinishTimer = null;
+    breathingClockModule.classList.remove("is-revealing");
+    breathingClockModule.classList.add("is-ready");
+    breathingClockStart.disabled = false;
+    breathingClockStart.removeAttribute("aria-disabled");
+  }, Math.max(BREATH_INTRO_FADE_DURATION, BREATH_CLOCK_REVEAL_DURATION));
+}
+
+function playBreathingIntro() {
+  clearBreathingIntroTimers();
+  breathingClockModule.classList.remove("is-revealing", "is-ready");
+  breathingClockModule.classList.add("is-intro");
+  breathingClockStart.disabled = true;
+  breathingClockStart.setAttribute("aria-disabled", "true");
+  breathingClockIntro.textContent = "";
+  let characterIndex = 0;
+  const typeNextCharacter = () => {
+    if (!breathingClockModule.classList.contains("is-active")) return;
+    if (characterIndex < BREATH_INTRO_TEXT.length) {
+      breathingClockIntro.textContent += BREATH_INTRO_TEXT[characterIndex];
+      characterIndex += 1;
+      breathingIntroTypeTimer = window.setTimeout(typeNextCharacter, BREATH_INTRO_TYPE_INTERVAL);
+      return;
+    }
+    breathingIntroTypeTimer = null;
+    breathingIntroHoldTimer = window.setTimeout(() => {
+      breathingIntroHoldTimer = null;
+      finishBreathingIntro();
+    }, BREATH_INTRO_HOLD_DURATION);
+  };
+  typeNextCharacter();
+}
+
+function stopAudioElement(audio) {
+  audio.pause();
+  try { audio.currentTime = 0; } catch {}
+}
+
+function stopEnvironmentAudio() {
+  stopAudioElement(breathingMorningAudio);
+  stopAudioElement(breathingEveningAudio);
+}
+
+function startEnvironmentAudio() {
+  stopEnvironmentAudio();
+  if (!breathingClockState.running) return;
+  const mode = breathingClockState.mode;
+  const audio = mode === "morning" ? breathingMorningAudio : breathingEveningAudio;
+  audio.volume = BREATH_AUDIO[mode].volume;
+  audio.loop = true;
+  const playAttempt = audio.play();
+  if (playAttempt) playAttempt.catch(error => {
+    console.warn(`[breathing clock] ${mode} environment audio unavailable`, error);
+  });
+}
+
+function syncEnvironmentAudio() {
+  if (breathingClockState.running) startEnvironmentAudio();
+  else stopEnvironmentAudio();
+}
+
+function setBreathingMode(mode) {
+  if (mode !== "morning" && mode !== "evening") return;
+  breathingClockState.mode = mode;
+  breathingClockRoot.dataset.clockMode = mode;
+  breathingClockMorning.classList.toggle("is-visible", mode === "morning");
+  breathingClockEvening.classList.toggle("is-visible", mode === "evening");
+  syncEnvironmentAudio();
+}
+
+function toggleBreathingMode() {
+  setBreathingMode(breathingClockState.mode === "morning" ? "evening" : "morning");
+}
+
+function setClockMode(mode) {
+  setBreathingMode(mode);
+}
+
+function toggleClockGif() {
+  toggleBreathingMode();
+}
+
+function playBreathDing() {
+  stopAudioElement(breathingClockDing);
+  breathingClockDing.volume = BREATH_AUDIO.ping.volume * PING_VOLUME_MULTIPLIER;
+  const playAttempt = breathingClockDing.play();
+  if (playAttempt) playAttempt.catch(error => {
+    console.warn("[breathing clock] ping playback unavailable", error);
+  });
+}
+
+function renderBreathingCycle(cycleElapsed) {
+  breathingClockRoot.style.setProperty(
+    "--clock-hand-angle",
+    `${breathingClockState.cycleProgress * 360}deg`
+  );
+  if (cycleElapsed < BREATH_INHALE_DURATION) {
+    breathingClockState.phase = "inhale";
+    breathingClockStatus.textContent = "吸气";
+  } else {
+    breathingClockState.phase = "exhale";
+    breathingClockStatus.textContent = "呼气";
+  }
+}
+
+function updateBreathingClock(timestamp) {
+  if (!breathingClockState.running) return;
+  breathingClockState.elapsed = timestamp - breathingClockState.startTime;
+  breathingClockState.currentCycleIndex = Math.floor(
+    breathingClockState.elapsed / BREATH_CYCLE_DURATION
+  );
+  const cycleElapsed = breathingClockState.elapsed % BREATH_CYCLE_DURATION;
+  breathingClockState.cycleProgress = cycleElapsed / BREATH_CYCLE_DURATION;
+  renderBreathingCycle(cycleElapsed);
+  if (breathingClockState.startCueTriggeredCycle !== breathingClockState.currentCycleIndex) {
+    breathingClockState.startCueTriggeredCycle = breathingClockState.currentCycleIndex;
+    playBreathDing();
+  }
+  if (
+    cycleElapsed >= BREATH_INHALE_DURATION
+    && breathingClockState.midCueTriggeredCycle !== breathingClockState.currentCycleIndex
+  ) {
+    breathingClockState.midCueTriggeredCycle = breathingClockState.currentCycleIndex;
+    playBreathDing();
+  }
+  breathingRAFId = window.requestAnimationFrame(updateBreathingClock);
+}
+
+function stopBreathingClock() {
+  breathingClockState.running = false;
+  if (breathingRAFId !== null) window.cancelAnimationFrame(breathingRAFId);
+  breathingRAFId = null;
+  stopAudioElement(breathingClockDing);
+  stopEnvironmentAudio();
+}
+
+function resetBreathingClock() {
+  stopBreathingClock();
+  breathingClockState.startTime = 0;
+  breathingClockState.elapsed = 0;
+  breathingClockState.currentCycleIndex = 0;
+  breathingClockState.cycleProgress = 0;
+  breathingClockState.phase = "inhale";
+  breathingClockState.startCueTriggeredCycle = -1;
+  breathingClockState.midCueTriggeredCycle = -1;
+  breathingClockRoot.style.setProperty("--clock-hand-angle", "0deg");
+  breathingClockStatus.textContent = "准备";
+  resetPullSwitch();
+}
+
+function startBreathingClock() {
+  if (
+    breathingClockState.running
+    || breathingRAFId !== null
+    || !breathingClockModule.classList.contains("is-ready")
+  ) return;
+  breathingClockState.running = true;
+  breathingClockState.startTime = performance.now();
+  breathingClockState.elapsed = 0;
+  breathingClockState.currentCycleIndex = 0;
+  breathingClockState.cycleProgress = 0;
+  breathingClockState.phase = "inhale";
+  breathingClockState.startCueTriggeredCycle = 0;
+  breathingClockState.midCueTriggeredCycle = -1;
+  renderBreathingCycle(0);
+  playBreathDing();
+  startEnvironmentAudio();
+  breathingRAFId = window.requestAnimationFrame(updateBreathingClock);
+}
+
+function openBreathingClock() {
+  breathingClockModule.classList.add("is-active");
+  breathingClockModule.setAttribute("aria-hidden", "false");
+  resetBreathingClock();
+  layoutBreathingClock();
+  playBreathingIntro();
+  breathingClockModule.focus({ preventScroll: true });
+}
+
+function closeBreathingModule() {
+  clearBreathingIntroTimers();
+  resetBreathingClock();
+  breathingClockModule.classList.remove("is-active", "is-intro", "is-revealing", "is-ready");
+  breathingClockIntro.textContent = "";
+  breathingClockStart.disabled = true;
+  breathingClockStart.setAttribute("aria-disabled", "true");
+  breathingClockModule.setAttribute("aria-hidden", "true");
+  if (tetraActiveFace === 3) completeTetraPlaceholderEvent();
+}
+
+function closeBreathingClock() {
+  closeBreathingModule();
+}
+
+function setPullHandle(x, y, rotation = 0) {
+  breathingSwitchHandle.style.left = `${x}px`;
+  breathingSwitchHandle.style.top = `${y}px`;
+  breathingSwitchHandle.style.transform = `translate(-50%, -50%) rotate(${rotation}deg)`;
+}
+
+function updatePullLine({ handleX = PULL_TOP_X, handleY = PULL_IDLE_Y, tension = 0, fold = 0, wave = 0 } = {}) {
+  if (fold > 0.04) {
+    const spread = 32 * fold;
+    const foldLift = 30 * fold;
+    breathingSwitchPath.setAttribute("d", [
+      `M ${PULL_TOP_X} ${PULL_TOP_Y}`,
+      `C ${PULL_TOP_X - 9 - wave} 53 ${PULL_TOP_X + 18 + wave} 96 ${PULL_TOP_X - 5} 126`,
+      `C ${PULL_TOP_X - spread} ${160 - foldLift} ${PULL_TOP_X + spread + 8} ${168 - foldLift} ${PULL_TOP_X - 18} ${143 - foldLift * .45}`,
+      `C ${PULL_TOP_X - spread - 8} ${118 + foldLift * .18} ${PULL_TOP_X + spread + 11} ${124 + foldLift * .12} ${PULL_TOP_X - 2} 160`,
+      `C ${PULL_TOP_X + 11 + wave} 177 ${handleX - 8} ${handleY - 24} ${handleX} ${handleY}`,
+    ].join(" "));
+    return;
+  }
+  breathingSwitchPath.setAttribute(
+    "d",
+    `M ${PULL_TOP_X} ${PULL_TOP_Y} L ${handleX} ${handleY}`
+  );
+}
+
+function drawIdlePullSwitch() {
+  updatePullLine({ handleX: PULL_TOP_X, handleY: PULL_IDLE_Y, tension: 0 });
+  setPullHandle(PULL_TOP_X, PULL_IDLE_Y, 0);
+  breathingPullOffset = 0;
+  breathingPullSwitch.classList.remove("is-dragging");
+}
+
+function cancelPullAnimation() {
+  if (breathingPullRAFId !== null) window.cancelAnimationFrame(breathingPullRAFId);
+  breathingPullRAFId = null;
+  if (
+    breathingPullPointerId !== null
+    && breathingPullSwitch.hasPointerCapture(breathingPullPointerId)
+  ) {
+    breathingPullSwitch.releasePointerCapture(breathingPullPointerId);
+  }
+  breathingPullPointerId = null;
+  breathingSwitchLocked = false;
+  drawIdlePullSwitch();
+}
+
+function resetPullSwitch() {
+  cancelPullAnimation();
+}
+
+function applyBreathingPullOffset(offset) {
+  breathingPullOffset = THREE.MathUtils.clamp(offset, 0, PULL_MAX_OFFSET);
+  const tension = breathingPullOffset / PULL_MAX_OFFSET;
+  const handleY = PULL_IDLE_Y + breathingPullOffset;
+  updatePullLine({ handleX: PULL_TOP_X, handleY, tension });
+  setPullHandle(PULL_TOP_X, handleY, 0);
+}
+
+function interpolatePullFrame(frames, progress) {
+  const nextIndex = frames.findIndex(frame => frame.t >= progress);
+  if (nextIndex <= 0) return frames[0];
+  const previous = frames[nextIndex - 1];
+  const next = frames[nextIndex];
+  const local = (progress - previous.t) / (next.t - previous.t);
+  return {
+    y: THREE.MathUtils.lerp(previous.y, next.y, local),
+    x: THREE.MathUtils.lerp(previous.x, next.x, local),
+    rotation: THREE.MathUtils.lerp(previous.rotation, next.rotation, local),
+  };
+}
+
+function playPullReleaseAnimation(startOffset, shouldToggle) {
+  if (breathingPullRAFId !== null) window.cancelAnimationFrame(breathingPullRAFId);
+  breathingSwitchLocked = true;
+  breathingPullSwitch.classList.remove("is-dragging");
+  if (shouldToggle) toggleBreathingMode();
+  const startTime = performance.now();
+  const frames = [
+    { t: 0, x: 0, y: PULL_IDLE_Y + startOffset, rotation: 0 },
+    { t: .18, x: -7, y: PULL_IDLE_Y - PULL_OVERSHOOT_Y, rotation: -6 },
+    { t: .4, x: 7, y: PULL_IDLE_Y + 28, rotation: 4 },
+    { t: .61, x: -5, y: PULL_IDLE_Y - 18, rotation: -3 },
+    { t: .81, x: 3, y: PULL_IDLE_Y + 9, rotation: 2 },
+    { t: 1, x: 0, y: PULL_IDLE_Y, rotation: 0 },
+  ];
+  const animateRelease = currentTime => {
+    const progress = THREE.MathUtils.clamp(
+      (currentTime - startTime) / PULL_SETTLE_DURATION,
+      0,
+      1
+    );
+    const frame = interpolatePullFrame(frames, progress);
+    const foldProgress = THREE.MathUtils.clamp((progress - .12) / .46, 0, 1);
+    const fold = Math.sin(foldProgress * Math.PI);
+    const wave = Math.sin(progress * Math.PI * 6) * (1 - progress) * 8;
+    const handleX = PULL_TOP_X + frame.x;
+    updatePullLine({
+      handleX,
+      handleY: frame.y,
+      tension: 0,
+      fold,
+      wave,
+    });
+    setPullHandle(handleX, frame.y, frame.rotation);
+    if (progress < 1) {
+      breathingPullRAFId = window.requestAnimationFrame(animateRelease);
+    } else {
+      breathingPullRAFId = null;
+      breathingSwitchLocked = false;
+      drawIdlePullSwitch();
+    }
+  };
+  breathingPullRAFId = window.requestAnimationFrame(animateRelease);
+}
+
+function playBreathingPull() {
+  if (breathingSwitchLocked || breathingPullRAFId !== null) return;
+  breathingSwitchLocked = true;
+  breathingPullSwitch.classList.add("is-dragging");
+  const startTime = performance.now();
+  const clickPullOffset = 66;
+  const animatePullDown = currentTime => {
+    const progress = THREE.MathUtils.clamp((currentTime - startTime) / 190, 0, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    applyBreathingPullOffset(clickPullOffset * eased);
+    if (progress < 1) {
+      breathingPullRAFId = window.requestAnimationFrame(animatePullDown);
+    } else {
+      breathingPullRAFId = null;
+      playPullReleaseAnimation(clickPullOffset, true);
+    }
+  };
+  breathingPullRAFId = window.requestAnimationFrame(animatePullDown);
+}
+
+breathingPullSwitch.addEventListener("pointerdown", event => {
+  if (breathingSwitchLocked || breathingPullPointerId !== null) return;
+  breathingPullPointerId = event.pointerId;
+  breathingPullStartY = event.clientY;
+  breathingPullOffset = 0;
+  breathingPullSwitch.classList.add("is-dragging");
+  breathingPullSwitch.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+
+breathingPullSwitch.addEventListener("pointermove", event => {
+  if (event.pointerId !== breathingPullPointerId || breathingSwitchLocked) return;
+  applyBreathingPullOffset(event.clientY - breathingPullStartY);
+});
+
+breathingPullSwitch.addEventListener("pointerup", event => {
+  if (event.pointerId !== breathingPullPointerId || breathingSwitchLocked) return;
+  breathingPullSwitch.releasePointerCapture(event.pointerId);
+  breathingPullPointerId = null;
+  const releasedOffset = breathingPullOffset;
+  if (releasedOffset < 5) {
+    drawIdlePullSwitch();
+    playBreathingPull();
+    return;
+  }
+  playPullReleaseAnimation(releasedOffset, releasedOffset >= PULL_TRIGGER_OFFSET);
+});
+
+breathingPullSwitch.addEventListener("pointercancel", event => {
+  if (event.pointerId !== breathingPullPointerId || breathingSwitchLocked) return;
+  breathingPullPointerId = null;
+  playPullReleaseAnimation(breathingPullOffset, false);
+});
+
+breathingClockStart.addEventListener("click", startBreathingClock);
+breathingClockReset.addEventListener("click", resetBreathingClock);
+breathingClockClose.addEventListener("click", closeBreathingModule);
+window.addEventListener("resize", layoutBreathingClock);
+setBreathingMode("morning");
+layoutBreathingClock();
+breathingClockStart.disabled = true;
+breathingClockStart.setAttribute("aria-disabled", "true");
+resetBreathingClock();
+
+window.breathingClockModule = Object.freeze({
+  assets: BREATH_ASSETS,
+  audio: BREATH_AUDIO,
+  state: breathingClockState,
+  startBreathingClock,
+  stopBreathingClock,
+  resetBreathingClock,
+  closeBreathingModule,
+  toggleBreathingMode,
+  setBreathingMode,
+  toggleClockGif,
+  setClockMode,
+  playBreathDing,
+});
+
+// 第四章老爷爷对话：独立模块，当前不接入正四面体事件映射。
+const GRANDPA_ASSETS = Object.freeze({
+  grandpaFrames: Object.freeze([
+    "./pic/forth/touzi/man_01.png",
+    "./pic/forth/touzi/man_02.png",
+    "./pic/forth/touzi/man_03.png",
+  ]),
+  bgGifLoop: "./pic/forth/touzi/flower_2.gif",
+  audio: Object.freeze({
+    l01: "./pic/forth/touzi/older/01.mp3",
+    l02: "./pic/forth/touzi/older/02.mp3",
+    l03: "./pic/forth/touzi/older/03.mp3",
+    l04: "./pic/forth/touzi/older/04.mp3",
+    l05: "./pic/forth/touzi/older/05.mp3",
+    a11: "./pic/forth/touzi/older/11.mp3",
+    a12: "./pic/forth/touzi/older/12.mp3",
+    a13: "./pic/forth/touzi/older/13.mp3",
+    b21: "./pic/forth/touzi/older/21.mp3",
+    b22: "./pic/forth/touzi/older/22.mp3",
+    b23: "./pic/forth/touzi/older/23.mp3",
+    b24: "./pic/forth/touzi/older/24.mp3",
+  }),
+});
+const GRANDPA_LAYOUT = Object.freeze({
+  grandpa: Object.freeze({
+    x: 0.449,
+    y: 0.437,
+    scale: 0.57,
+  }),
+  gif: Object.freeze({
+    x: 0.329,
+    y: 0.550,
+    scale: 0.92,
+  }),
+});
+const GRANDPA_X = GRANDPA_LAYOUT.grandpa.x;
+const GRANDPA_Y = GRANDPA_LAYOUT.grandpa.y;
+const GRANDPA_SCALE = GRANDPA_LAYOUT.grandpa.scale;
+const GRANDPA_BG_X = GRANDPA_LAYOUT.gif.x;
+const GRANDPA_BG_Y = GRANDPA_LAYOUT.gif.y;
+const GRANDPA_BG_SCALE = GRANDPA_LAYOUT.gif.scale;
+const GRANDPA_BUBBLE_POSITION = Object.freeze({
+  x: 0.72,
+  y: 0.42,
+});
+const GRANDPA_PHONE_LAYOUT = Object.freeze({
+  x: 0.16,
+  y: 0.24,
+  scale: 1,
+});
+const GRANDPA_FRAME_INTERVAL = 140;
+
+const GRANDPA_DIALOGUES = Object.freeze({
+  main: Object.freeze([
+    Object.freeze({ id: "01", audio: GRANDPA_ASSETS.audio.l01, text: "唉，小青年。\n俺跟你打听个事儿。" }),
+    Object.freeze({ id: "02", audio: GRANDPA_ASSETS.audio.l02, text: "俺那孙子，最近也不知道咋了。\n一天到晚抱着个手机，刷个不停。" }),
+    Object.freeze({ id: "03", audio: GRANDPA_ASSETS.audio.l03, text: "看人家同学这个实习了，那个得奖了，他就坐不住。\n饭也不好好吃，觉也睡不踏实。" }),
+    Object.freeze({ id: "04", audio: GRANDPA_ASSETS.audio.l04, text: "俺问他咋了，他就说“爷你不懂”。" }),
+    Object.freeze({ id: "05", audio: GRANDPA_ASSETS.audio.l05, text: "你说，你们年轻人，有啥好法子给俺孙子支支招呗？" }),
+  ]),
+  A: Object.freeze([
+    Object.freeze({ id: "11", audio: GRANDPA_ASSETS.audio.a11, text: "哎呀呀，还是你们年轻人有想法啊！" }),
+    Object.freeze({ id: "12", audio: GRANDPA_ASSETS.audio.a12, text: "俺就琢磨着，这孩子是眼睛老盯着别人家地里，忘了自己那亩地也得浇水。\n你这一说，俺心里亮堂了。" }),
+    Object.freeze({ id: "13", audio: GRANDPA_ASSETS.audio.a13, text: "俺这就回去，跟他唠唠。\n小青年，谢谢你啊，你这话在理。" }),
+  ]),
+  B: Object.freeze([
+    Object.freeze({ id: "21", audio: GRANDPA_ASSETS.audio.b21, text: "小青年啊，不急。\n这事儿俺也不懂，咱俩一块儿琢磨琢磨。" }),
+    Object.freeze({ id: "22", audio: GRANDPA_ASSETS.audio.b22, text: "俺听人说，手机上能搜着法子。\n让俺看看，这网上说啊……" }),
+    Object.freeze({ id: "23", audio: GRANDPA_ASSETS.audio.b23, text: "头一条，说让孩子先把心里那点事儿写下来。写出来，心里就不那么堵了。\n第二条，说心里慌的时候，先别讲道理，慢慢喘几口气，气顺了人就不慌了。\n第三条，说同一件事，换个说法看看，天也塌不下来。\n第四条，说实在不行，就：干脆错过一回，不看那手机，过两天一看，啥事没有。" }),
+    Object.freeze({ id: "24", audio: GRANDPA_ASSETS.audio.b24, text: "俺瞅着，这些法子都不难。\n小青年，俺回去试试。\n你要是哪天也心里闹腾，也照这个来。\n咱都不是铁打的，慢慢来。" }),
+  ]),
+});
+
+const GRANDPA_SUPPORTIVE_PHRASES = Object.freeze([
+  "一切都来得及", "关注自身", "减少比较", "来得及", "好好睡觉", "不要比较", "别比较",
+  "做自己擅长的事", "少比较", "关注自己", "专注自己", "过好自己", "做自己", "自己的节奏",
+  "别老盯着别人", "看自己", "慢慢来", "写下来", "深呼吸", "呼吸", "换个角度", "换个想法",
+  "接受错过", "放下手机", "少刷手机", "休息一下", "别和别人比", "比较没意义", "别人是别人",
+  "回到自己", "管好自己", "先顾自己", "自己的路", "按自己的来", "别跟着别人跑", "别被带着走",
+  "收回注意力", "注意力拿回来", "不急", "慢慢走", "一步一步来", "该来的会来", "不用赶", "别慌",
+  "每个人时区不同", "你有你的时间", "说出来", "写出来", "记下来", "把想法放外面", "承认它在",
+  "不憋着", "慢呼吸", "呼气长一点", "先喘口气", "让身体慢下来", "稳住身体", "感觉一下呼吸",
+  "松一松", "停三秒", "换个说法", "换个解释", "不只有一种看法", "看到的不一定是全部",
+  "别人只展示了结果", "你看到的不是全貌", "多一个角度", "念头不等于事实", "错过也没事",
+  "允许错过", "少看一点", "关一会儿", "离开屏幕", "抬头看看", "把时间留给自己",
+  "给现实留点时间", "做点手边的事", "把注意力还给自己", "今天少刷一点",
+]);
+
+const GRANDPA_SUPPORTIVE_KEYWORDS = Object.freeze([
+  "比较", "自己", "注意力", "慢慢", "别急", "不急", "呼吸", "写出来", "说出来",
+  "记下来", "错过", "少刷", "放下手机", "离开屏幕", "换个角度", "换个解释", "全貌", "休息",
+]);
+
+const grandpaDialogueModule = document.querySelector(".grandpa-dialogue-module");
+const grandpaSprite = document.querySelector(".grandpa-sprite");
+const grandpaSpriteImage = grandpaSprite.querySelector("img");
+const grandpaSpeechBubble = document.querySelector(".grandpa-speech-bubble");
+const grandpaPhonePanel = document.querySelector(".grandpa-phone-panel");
+const grandpaPhoneMask = document.querySelector(".grandpa-phone-mask");
+const grandpaPhoneScrollContent = document.querySelector(".grandpa-phone-scroll-content");
+const grandpaInputPanel = document.querySelector(".grandpa-input-panel");
+const grandpaInput = grandpaInputPanel.querySelector("input");
+const grandpaSendButton = grandpaInputPanel.querySelector('button[type="submit"]');
+const grandpaClose = document.querySelector(".grandpa-close");
+const grandpaDialogueAudio = document.querySelector(".grandpa-dialogue-audio");
+
+const grandpaDialogueState = {
+  phase: "closed",
+  mainIndex: -1,
+  branch: null,
+  branchIndex: -1,
+  speaking: false,
+  currentLineId: null,
+};
+let grandpaFrameTimer = null;
+let grandpaClassificationToken = 0;
+let grandpaPhoneVisible = false;
+let grandpaPhoneScrollY = 0;
+
+function updateGrandpaLayout() {
+  grandpaDialogueModule.style.setProperty("--grandpa-x", `${GRANDPA_X * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-y", `${GRANDPA_Y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-scale", String(GRANDPA_SCALE));
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-x", `${GRANDPA_BG_X * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-y", `${GRANDPA_BG_Y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-scale", String(GRANDPA_BG_SCALE));
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-x", `${GRANDPA_BUBBLE_POSITION.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-y", `${GRANDPA_BUBBLE_POSITION.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-phone-x", `${GRANDPA_PHONE_LAYOUT.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-phone-y", `${GRANDPA_PHONE_LAYOUT.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-phone-scale", String(GRANDPA_PHONE_LAYOUT.scale));
+}
+
+updateGrandpaLayout();
+
+GRANDPA_ASSETS.grandpaFrames.forEach(src => {
+  const image = new Image();
+  image.src = src;
+});
+
+function setGrandpaIdleFrame() {
+  grandpaSpriteImage.src = GRANDPA_ASSETS.grandpaFrames[0];
+}
+
+function stopGrandpaTalkingAnimation() {
+  if (grandpaFrameTimer !== null) window.clearInterval(grandpaFrameTimer);
+  grandpaFrameTimer = null;
+  setGrandpaIdleFrame();
+}
+
+function startGrandpaTalkingAnimation() {
+  stopGrandpaTalkingAnimation();
+  let frameIndex = 0;
+  grandpaFrameTimer = window.setInterval(() => {
+    frameIndex = (frameIndex + 1) % GRANDPA_ASSETS.grandpaFrames.length;
+    grandpaSpriteImage.src = GRANDPA_ASSETS.grandpaFrames[frameIndex];
+  }, GRANDPA_FRAME_INTERVAL);
+}
+
+function stopGrandpaAudio() {
+  grandpaDialogueAudio.pause();
+  grandpaDialogueAudio.removeAttribute("src");
+  grandpaDialogueAudio.load();
+}
+
+function updateGrandpaPhoneScroll() {
+  grandpaPhoneScrollContent.style.transform = `translateY(${-grandpaPhoneScrollY}px)`;
+}
+
+function resetGrandpaPhone() {
+  grandpaPhoneVisible = false;
+  grandpaPhoneScrollY = 0;
+  grandpaPhonePanel.classList.remove("is-visible");
+  grandpaPhonePanel.setAttribute("aria-hidden", "true");
+  updateGrandpaPhoneScroll();
+}
+
+function showGrandpaPhone() {
+  grandpaPhoneScrollY = 0;
+  updateGrandpaPhoneScroll();
+  grandpaPhoneVisible = true;
+  grandpaPhonePanel.classList.add("is-visible");
+  grandpaPhonePanel.setAttribute("aria-hidden", "false");
+}
+
+function hideGrandpaPhone() {
+  grandpaPhoneVisible = false;
+  grandpaPhonePanel.classList.remove("is-visible");
+  grandpaPhonePanel.setAttribute("aria-hidden", "true");
+}
+
+function finishGrandpaPhoneTransition(event) {
+  if (event.propertyName !== "opacity" || grandpaPhoneVisible) return;
+  grandpaPhoneScrollY = 0;
+  updateGrandpaPhoneScroll();
+}
+
+function scrollGrandpaPhone(event) {
+  if (!grandpaPhoneVisible) return;
+  event.preventDefault();
+  const maxScroll = Math.max(
+    0,
+    grandpaPhoneScrollContent.offsetHeight - grandpaPhoneMask.clientHeight
+  );
+  grandpaPhoneScrollY = Math.min(maxScroll, Math.max(0, grandpaPhoneScrollY + event.deltaY));
+  updateGrandpaPhoneScroll();
+}
+
+function resetGrandpaDialogue() {
+  grandpaClassificationToken += 1;
+  stopGrandpaAudio();
+  stopGrandpaTalkingAnimation();
+  grandpaDialogueState.phase = "main";
+  grandpaDialogueState.mainIndex = -1;
+  grandpaDialogueState.branch = null;
+  grandpaDialogueState.branchIndex = -1;
+  grandpaDialogueState.speaking = false;
+  grandpaDialogueState.currentLineId = null;
+  resetGrandpaPhone();
+  grandpaSprite.disabled = false;
+  grandpaSpeechBubble.textContent = "点击老爷爷，听听他想说什么。";
+  grandpaInputPanel.hidden = true;
+  grandpaInput.value = "";
+  grandpaInput.disabled = false;
+  grandpaSendButton.disabled = false;
+}
+
+function finishGrandpaLine(audioEnded = false) {
+  if (!grandpaDialogueState.speaking) return;
+  const completedLineId = grandpaDialogueState.currentLineId;
+  grandpaDialogueState.speaking = false;
+  grandpaDialogueState.currentLineId = null;
+  stopGrandpaTalkingAnimation();
+  if (audioEnded && grandpaDialogueState.branch === "B") {
+    if (completedLineId === "22") showGrandpaPhone();
+    if (completedLineId === "23") hideGrandpaPhone();
+  }
+  if (
+    grandpaDialogueState.phase === "main"
+    && grandpaDialogueState.mainIndex === GRANDPA_DIALOGUES.main.length - 1
+  ) {
+    grandpaDialogueState.phase = "awaiting-input";
+    grandpaSprite.disabled = true;
+    grandpaInputPanel.hidden = false;
+    grandpaInput.focus({ preventScroll: true });
+    return;
+  }
+  if (
+    grandpaDialogueState.phase === "branch"
+    && grandpaDialogueState.branchIndex === GRANDPA_DIALOGUES[grandpaDialogueState.branch].length - 1
+  ) {
+    grandpaDialogueState.phase = "complete";
+    grandpaSprite.disabled = true;
+    return;
+  }
+  grandpaSprite.disabled = false;
+}
+
+function playGrandpaLine(line) {
+  if (!line || grandpaDialogueState.speaking) return;
+  grandpaDialogueState.speaking = true;
+  grandpaDialogueState.currentLineId = line.id;
+  grandpaSprite.disabled = true;
+  grandpaSpeechBubble.textContent = line.text;
+  grandpaDialogueAudio.src = line.audio;
+  grandpaDialogueAudio.currentTime = 0;
+  startGrandpaTalkingAnimation();
+  const playAttempt = grandpaDialogueAudio.play();
+  if (playAttempt) playAttempt.catch(error => {
+    console.warn(`[grandpa dialogue] audio ${line.id} unavailable`, error);
+    finishGrandpaLine();
+  });
+}
+
+function advanceGrandpaDialogue() {
+  if (grandpaDialogueState.speaking) return;
+  if (grandpaDialogueState.phase === "main") {
+    const nextIndex = grandpaDialogueState.mainIndex + 1;
+    if (nextIndex >= GRANDPA_DIALOGUES.main.length) return;
+    grandpaDialogueState.mainIndex = nextIndex;
+    playGrandpaLine(GRANDPA_DIALOGUES.main[nextIndex]);
+    return;
+  }
+  if (grandpaDialogueState.phase === "branch") {
+    const branchLines = GRANDPA_DIALOGUES[grandpaDialogueState.branch];
+    const nextIndex = grandpaDialogueState.branchIndex + 1;
+    if (nextIndex >= branchLines.length) return;
+    grandpaDialogueState.branchIndex = nextIndex;
+    playGrandpaLine(branchLines[nextIndex]);
+  }
+}
+
+function normalizeGrandpaAnswer(value) {
+  return String(value || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+}
+
+function classifyGrandpaAnswerLocal(answer) {
+  const normalizedAnswer = normalizeGrandpaAnswer(answer);
+  if (normalizedAnswer.length < 3) return "B";
+
+  const phraseMatched = GRANDPA_SUPPORTIVE_PHRASES.some(keyword => (
+    normalizedAnswer.includes(normalizeGrandpaAnswer(keyword))
+  ));
+  if (phraseMatched) return "A";
+
+  let keywordCount = 0;
+  for (const keyword of GRANDPA_SUPPORTIVE_KEYWORDS) {
+    if (normalizedAnswer.includes(normalizeGrandpaAnswer(keyword))) keywordCount += 1;
+  }
+  return keywordCount >= 2 ? "A" : "B";
+}
+
+async function classifyGrandpaAnswer(text) {
+  try {
+    const response = await fetch("/api/classify-grandpa", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) throw new Error(`Classification request failed: ${response.status}`);
+
+    const data = await response.json();
+    if (data.branch === "A" || data.branch === "B") return data.branch;
+    throw new Error("Invalid classification branch");
+  } catch (error) {
+    console.warn("[grandpa dialogue] AI classify failed; using local rules.", error);
+    return classifyGrandpaAnswerLocal(text);
+  }
+}
+
+function startGrandpaBranch(branch) {
+  resetGrandpaPhone();
+  grandpaDialogueState.branch = branch;
+  grandpaDialogueState.branchIndex = -1;
+  grandpaDialogueState.phase = "branch";
+  grandpaInputPanel.hidden = true;
+  grandpaSprite.disabled = false;
+  grandpaSpeechBubble.textContent = "老爷爷认真听着，点击他继续对话。";
+}
+
+async function submitGrandpaAnswer(event) {
+  event.preventDefault();
+  if (grandpaDialogueState.phase !== "awaiting-input") return;
+  const text = grandpaInput.value.trim();
+  const requestToken = ++grandpaClassificationToken;
+
+  grandpaDialogueState.phase = "classifying";
+  grandpaInput.disabled = true;
+  grandpaSendButton.disabled = true;
+  grandpaSpeechBubble.textContent = "老爷爷正在认真琢磨你的话……";
+
+  const branch = await classifyGrandpaAnswer(text);
+  if (
+    requestToken !== grandpaClassificationToken
+    || !grandpaDialogueModule.classList.contains("is-active")
+    || grandpaDialogueState.phase !== "classifying"
+  ) return;
+
+  startGrandpaBranch(branch);
+}
+
+function openGrandpaDialogue() {
+  resetGrandpaDialogue();
+  grandpaDialogueModule.classList.add("is-active");
+  grandpaDialogueModule.setAttribute("aria-hidden", "false");
+  grandpaDialogueModule.focus({ preventScroll: true });
+}
+
+function closeGrandpaDialogue() {
+  const completesFaceFour = tetraActiveFace === 4;
+  resetGrandpaDialogue();
+  grandpaDialogueState.phase = "closed";
+  grandpaDialogueModule.classList.remove("is-active");
+  grandpaDialogueModule.setAttribute("aria-hidden", "true");
+  if (completesFaceFour) completeTetraPlaceholderEvent();
+}
+
+grandpaDialogueAudio.addEventListener("ended", () => finishGrandpaLine(true));
+grandpaDialogueAudio.addEventListener("error", () => {
+  if (grandpaDialogueState.speaking) finishGrandpaLine();
+});
+grandpaPhonePanel.addEventListener("transitionend", finishGrandpaPhoneTransition);
+grandpaPhoneMask.addEventListener("wheel", scrollGrandpaPhone, { passive: false });
+grandpaSprite.addEventListener("click", advanceGrandpaDialogue);
+grandpaInputPanel.addEventListener("submit", submitGrandpaAnswer);
+grandpaClose.addEventListener("click", closeGrandpaDialogue);
+resetGrandpaDialogue();
+grandpaDialogueState.phase = "closed";
+
+window.grandpaDialogueModule = Object.freeze({
+  assets: GRANDPA_ASSETS,
+  dialogues: GRANDPA_DIALOGUES,
+  phrases: GRANDPA_SUPPORTIVE_PHRASES,
+  keywords: GRANDPA_SUPPORTIVE_KEYWORDS,
+  state: grandpaDialogueState,
+  open: openGrandpaDialogue,
+  close: closeGrandpaDialogue,
+  classifyAnswer: classifyGrandpaAnswer,
+  classifyAnswerLocal: classifyGrandpaAnswerLocal,
+  showPhone: showGrandpaPhone,
+  hidePhone: hideGrandpaPhone,
+  resetPhone: resetGrandpaPhone,
+});
+
+// 第四章滤光片认知重评：由正四面体 Face 2 进入。
+const FILTER_PAGES = Object.freeze([
+  Object.freeze({
+    title: "别人都比我快",
+    assumed: "同龄人都已经在实习、拿奖、做项目了。\n我还没有做到这些，是不是说明我已经落后了？",
+    actual: "你看到的是别人此刻展示出来的进度，每个人有每个人的节奏。\n别人的快，并不能证明你的慢就是失败。",
+  }),
+  Object.freeze({
+    title: "别人看起来都过得很好",
+    assumed: "为什么大家的生活都这么精彩？\n旅行、聚会、作品、成绩……\n好像只有我的生活什么都没有发生。",
+    actual: "社交平台更容易留下值得展示的片段，却很少记录等待、失败、疲惫和普通的一天。\n你正在拿自己的全部生活，和别人的高光片段比较。",
+  }),
+  Object.freeze({
+    title: "这个我也必须马上学",
+    assumed: "新工具、新热点、新机会一直出现。\n如果我现在不跟上，\n以后是不是就没有机会了？",
+    actual: "新东西不会停止出现，也没有人能够同时抓住所有机会。\n重要的不是全部跟上，而是决定什么真正和你有关。"
+  }),
+  Object.freeze({
+    title: "停下来就是退步",
+    assumed: "别人都还在学习、工作、进步，\n我现在休息的话，\n是不是又会被甩得更远？",
+    actual: "休息并不是退出竞争，也不是浪费时间。\n人的注意力和精力都有上限。\n暂时停下来，是为了重新知道自己接下来要往哪里走。",
+  }),
+  Object.freeze({
+    title: "我是不是还不够好",
+    assumed: "我已经努力很久了，\n可还是有人比我做得更好。\n是不是说明我其实没有什么天赋，\n再努力也赶不上别人？",
+    actual: "现在还没有做到，并不等于永远做不到。\n你今天会的很多事情，也都是从曾经不会的时候一点点长出来的。\n成长不是证明自己比别人强，\n而是回头时发现，自己已经比昨天多走了一点。",
+  }),
+  Object.freeze({
+    title: "今天好像什么都没做成",
+    assumed: "今天没有完成什么厉害的事情，\n没有作品，没有进展，也没有值得发出来的东西。\n这样的一天，\n是不是就算被我浪费掉了？",
+    actual: "不是每一天都需要留下成果，才算认真生活过。\n吃好一顿饭，睡一觉，晒到一点太阳，和喜欢的人说几句话，\n甚至只是安静地度过一天，都可以是生活本身，而不是成功路上的空白。",
+  }),
+  Object.freeze({
+    title: "如果没人看见，还有意义吗",
+    assumed: "如果我做的东西没人点赞，\n没人夸，也没有人知道，\n那我花这么多时间去喜欢、去画、去做，\n是不是其实没什么意义？",
+    actual: "被看见当然会让人开心，但一件事情的意义不只来自别人的目光。\n有些东西值得做，只是因为你在做它的时候很投入、很安静、很快乐。\n喜欢本身，也可以成为理由。",
+  }),
+  Object.freeze({
+    title: "我是不是走错路了",
+    assumed: "别人好像越来越确定自己要去哪里，\n只有我还在反复试、反复改。\n如果现在还没有找到答案，\n是不是说明我已经走错了？",
+    actual: "很多人的方向，本来就是在走路的时候慢慢看清的。\n绕路、停下来、改变主意，也都是认识自己的方式。\n你不需要现在就成为一个答案完整的人，\n你还可以继续长大，继续选择。",
+  }),
+]);
+
+const PAGE_TURN_THRESHOLD = 100;
+const PAGE_TURN_DURATION = 560;
+const FILTER_BOOK_SCALE = 0.7;
+const BASE_FILTER_TEXT_SIZE = 28;
+const FILTER_TEXT_SCALE = 0.6;
+const FILTER_TEXT_LINE_HEIGHT = 1.15;
+const FILTER_HINT_OFFSET_Y = 12;
+const FILTER_AUDIO = Object.freeze({
+  bgm: "./pic/forth/touzi/in the pool.m4a",
+  pageTurn: "./pic/forth/touzi/flip.mp3",
+});
+const FILTER_AUDIO_CONFIG = Object.freeze({
+  bgmVolume: 0.4,
+  pageTurnVolume: 0.65,
+});
+const BLACK_FILTER_X = 0.37;
+const BLACK_FILTER_Y = 0.81;
+const BLACK_FILTER_SCALE = 1;
+const WHITE_FILTER_X = 0.63;
+const WHITE_FILTER_Y = 0.82;
+const WHITE_FILTER_SCALE = 1;
+const BOOK_X = 0.5;
+const BOOK_Y = 0.42;
+const RIGHT_PAGE_TEXT_X = 0.5;
+const RIGHT_PAGE_TEXT_Y = 0.5;
+const RIGHT_PAGE_TEXT_WIDTH = 0.76;
+const TAIJI_SIZE = 120;
+const TAIJI_X = 0.5;
+const TAIJI_Y = 0.5;
+const TAIJI_SCALE = 1;
+const FILTER_FOLLOW_EASING = 0.18;
+
+const filterModule = document.querySelector(".filter-module");
+const filterBookRightPage = document.querySelector(".filter-book-page--right");
+const filterTextStack = document.querySelector(".filter-text-stack");
+const filterPageTitle = document.querySelector(".filter-page-title");
+const filterTextBlack = document.querySelector(".filter-text-layer--black");
+const filterTextWhite = document.querySelector(".filter-text-layer--white");
+const filterRevealOverlay = document.querySelector(".filter-reveal-overlay");
+const filterRevealBlack = document.querySelector(".filter-reveal-layer--black");
+const filterRevealWhite = document.querySelector(".filter-reveal-layer--white");
+const filterPageCount = document.querySelector(".filter-page-count");
+const filterModuleClose = document.querySelector(".filter-module-close");
+const filterBgmAudio = document.querySelector(".filter-module-bgm");
+const filterPageTurnAudio = document.querySelector(".filter-module-page-turn");
+const filterLensButtons = {
+  black: document.querySelector(".filter-lens--black"),
+  white: document.querySelector(".filter-lens--white"),
+};
+const filterControlGroups = {
+  black: document.querySelector(".filter-control-group--black"),
+  white: document.querySelector(".filter-control-group--white"),
+};
+
+const blackFilterHome = Object.freeze({ x: BLACK_FILTER_X, y: BLACK_FILTER_Y });
+const whiteFilterHome = Object.freeze({ x: WHITE_FILTER_X, y: WHITE_FILTER_Y });
+const filterHomes = Object.freeze({ black: blackFilterHome, white: whiteFilterHome });
+const filterFollower = {
+  black: { x: 0, y: 0, targetX: 0, targetY: 0 },
+  white: { x: 0, y: 0, targetX: 0, targetY: 0 },
+};
+const filterModuleState = {
+  currentPage: 0,
+  activeFilter: null,
+  isTurningPage: false,
+  isDraggingPage: false,
+};
+let filterFollowerRAF = null;
+let filterPagePointerId = null;
+let filterPageDragStartX = 0;
+let filterPageDragDeltaX = 0;
+let filterPointerNormX = 0.5;
+let filterPointerNormY = 0.5;
+
+function applyFilterModuleLayout() {
+  filterModule.style.setProperty("--book-x", `${BOOK_X * 100}%`);
+  filterModule.style.setProperty("--book-y", `${BOOK_Y * 100}%`);
+  filterModule.style.setProperty("--book-scale", String(FILTER_BOOK_SCALE));
+  filterModule.style.setProperty(
+    "--filter-text-size",
+    `${BASE_FILTER_TEXT_SIZE * FILTER_TEXT_SCALE}px`
+  );
+  filterModule.style.setProperty(
+    "--filter-page-meta-size",
+    `${BASE_FILTER_TEXT_SIZE * FILTER_TEXT_SCALE * 0.48}px`
+  );
+  filterModule.style.setProperty("--filter-text-line-height", String(FILTER_TEXT_LINE_HEIGHT));
+  filterModule.style.setProperty("--filter-hint-offset-y", `${FILTER_HINT_OFFSET_Y}px`);
+  filterModule.style.setProperty("--black-filter-x", `${BLACK_FILTER_X * 100}%`);
+  filterModule.style.setProperty("--black-filter-y", `${BLACK_FILTER_Y * 100}%`);
+  filterModule.style.setProperty("--black-filter-scale", String(BLACK_FILTER_SCALE));
+  filterModule.style.setProperty("--white-filter-x", `${WHITE_FILTER_X * 100}%`);
+  filterModule.style.setProperty("--white-filter-y", `${WHITE_FILTER_Y * 100}%`);
+  filterModule.style.setProperty("--white-filter-scale", String(WHITE_FILTER_SCALE));
+  filterModule.style.setProperty("--right-page-text-x", `${RIGHT_PAGE_TEXT_X * 100}%`);
+  filterModule.style.setProperty("--right-page-text-y", `${RIGHT_PAGE_TEXT_Y * 100}%`);
+  filterModule.style.setProperty("--right-page-text-width", `${RIGHT_PAGE_TEXT_WIDTH * 100}%`);
+  filterModule.style.setProperty("--taiji-size", `${TAIJI_SIZE}px`);
+  filterModule.style.setProperty("--taiji-x", `${TAIJI_X * 100}%`);
+  filterModule.style.setProperty("--taiji-y", `${TAIJI_Y * 100}%`);
+  filterModule.style.setProperty("--taiji-scale", String(TAIJI_SCALE));
+}
+
+function playFilterBgm() {
+  if (!filterBgmAudio.paused) return;
+  filterBgmAudio.volume = FILTER_AUDIO_CONFIG.bgmVolume;
+  const playAttempt = filterBgmAudio.play();
+  if (playAttempt) playAttempt.catch(() => {});
+}
+
+function stopFilterAudio() {
+  [filterBgmAudio, filterPageTurnAudio].forEach(audio => {
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch (error) {
+      // Audio metadata may not be ready yet; stopping remains a safe no-op.
+    }
+  });
+}
+
+function playPageTurnSfx() {
+  filterPageTurnAudio.pause();
+  try {
+    filterPageTurnAudio.currentTime = 0;
+  } catch (error) {
+    // Missing or not-yet-loaded audio must not block a successful page turn.
+  }
+  filterPageTurnAudio.volume = FILTER_AUDIO_CONFIG.pageTurnVolume;
+  const playAttempt = filterPageTurnAudio.play();
+  if (playAttempt) playAttempt.catch(() => {});
+}
+
+function renderFilterPage() {
+  const page = FILTER_PAGES[filterModuleState.currentPage];
+  filterPageTitle.textContent = page.title;
+  filterTextBlack.textContent = page.actual;
+  filterTextWhite.textContent = page.assumed;
+  filterRevealBlack.textContent = page.actual;
+  filterRevealWhite.textContent = page.assumed;
+  filterPageCount.textContent = `${String(filterModuleState.currentPage + 1).padStart(2, "0")} / ${String(FILTER_PAGES.length).padStart(2, "0")}`;
+}
+
+function syncFilterRevealOverlay() {
+  if (!filterModule.classList.contains("is-active")) return;
+  const moduleRect = filterModule.getBoundingClientRect();
+  const textRect = filterTextStack.getBoundingClientRect();
+  filterRevealOverlay.style.left = `${textRect.left - moduleRect.left}px`;
+  filterRevealOverlay.style.top = `${textRect.top - moduleRect.top}px`;
+  filterRevealOverlay.style.width = `${textRect.width}px`;
+  filterRevealOverlay.style.height = `${textRect.height}px`;
+}
+
+function updateFilterMask() {
+  const type = filterModuleState.activeFilter;
+  if (!type) return;
+  const lensRect = filterLensButtons[type].getBoundingClientRect();
+  const overlayRect = filterRevealOverlay.getBoundingClientRect();
+  const x = lensRect.left + lensRect.width / 2 - overlayRect.left;
+  const y = lensRect.top + lensRect.height / 2 - overlayRect.top;
+  filterRevealOverlay.style.setProperty("--filter-mask-x", `${x}px`);
+  filterRevealOverlay.style.setProperty("--filter-mask-y", `${y}px`);
+}
+
+function updateFilterLayerOrder() {
+  const active = filterModuleState.activeFilter || "none";
+  filterModule.dataset.activeFilter = active;
+  Object.entries(filterLensButtons).forEach(([type, button]) => {
+    const selected = type === filterModuleState.activeFilter;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+    filterControlGroups[type].classList.toggle("has-selected", selected);
+  });
+}
+
+function setFilterTargetToPointer(type) {
+  const moduleRect = filterModule.getBoundingClientRect();
+  const home = filterHomes[type];
+  filterFollower[type].targetX = filterPointerNormX * moduleRect.width - home.x * moduleRect.width;
+  filterFollower[type].targetY = filterPointerNormY * moduleRect.height - home.y * moduleRect.height;
+}
+
+function startFilterFollowerAnimation() {
+  if (filterFollowerRAF !== null) return;
+  filterFollowerRAF = window.requestAnimationFrame(updateFilterPosition);
+}
+
+function updateFilterPosition() {
+  let stillMoving = filterModuleState.activeFilter !== null;
+  Object.entries(filterFollower).forEach(([type, position]) => {
+    position.x += (position.targetX - position.x) * FILTER_FOLLOW_EASING;
+    position.y += (position.targetY - position.y) * FILTER_FOLLOW_EASING;
+    if (Math.abs(position.targetX - position.x) < 0.08) position.x = position.targetX;
+    if (Math.abs(position.targetY - position.y) < 0.08) position.y = position.targetY;
+    if (position.x !== position.targetX || position.y !== position.targetY) stillMoving = true;
+    filterLensButtons[type].style.setProperty("--filter-offset-x", `${position.x}px`);
+    filterLensButtons[type].style.setProperty("--filter-offset-y", `${position.y}px`);
+  });
+  updateFilterMask();
+  if (stillMoving && filterModule.classList.contains("is-active")) {
+    filterFollowerRAF = window.requestAnimationFrame(updateFilterPosition);
+  } else {
+    filterFollowerRAF = null;
+  }
+}
+
+function releaseFilter(markInteraction = true) {
+  const active = filterModuleState.activeFilter;
+  if (active) {
+    filterFollower[active].targetX = 0;
+    filterFollower[active].targetY = 0;
+  }
+  filterModuleState.activeFilter = null;
+  updateFilterLayerOrder();
+  if (markInteraction) filterModule.classList.add("has-interacted");
+  startFilterFollowerAnimation();
+}
+
+function selectFilter(type, pointerEvent) {
+  if (filterModuleState.isTurningPage || !filterHomes[type]) return;
+  if (filterModuleState.activeFilter === type) {
+    releaseFilter();
+    return;
+  }
+  if (filterModuleState.activeFilter) releaseFilter(false);
+  const moduleRect = filterModule.getBoundingClientRect();
+  filterPointerNormX = (pointerEvent.clientX - moduleRect.left) / moduleRect.width;
+  filterPointerNormY = (pointerEvent.clientY - moduleRect.top) / moduleRect.height;
+  filterModuleState.activeFilter = type;
+  setFilterTargetToPointer(type);
+  updateFilterLayerOrder();
+  filterModule.classList.add("has-interacted");
+  startFilterFollowerAnimation();
+}
+
+function handleFilterPointerMove(event) {
+  const active = filterModuleState.activeFilter;
+  if (!active) return;
+  const moduleRect = filterModule.getBoundingClientRect();
+  filterPointerNormX = Math.min(1, Math.max(0, (event.clientX - moduleRect.left) / moduleRect.width));
+  filterPointerNormY = Math.min(1, Math.max(0, (event.clientY - moduleRect.top) / moduleRect.height));
+  setFilterTargetToPointer(active);
+  startFilterFollowerAnimation();
+}
+
+function startPageDrag(event) {
+  if (filterModuleState.isTurningPage || event.button !== 0) return;
+  if (filterModuleState.activeFilter) releaseFilter();
+  filterModuleState.isDraggingPage = true;
+  filterPagePointerId = event.pointerId;
+  filterPageDragStartX = event.clientX;
+  filterPageDragDeltaX = 0;
+  filterBookRightPage.classList.add("is-dragging");
+  filterBookRightPage.setPointerCapture(event.pointerId);
+  filterModule.classList.add("has-interacted");
+}
+
+function updatePageDrag(event) {
+  if (!filterModuleState.isDraggingPage || event.pointerId !== filterPagePointerId) return;
+  let delta = event.clientX - filterPageDragStartX;
+  const atFirstPage = filterModuleState.currentPage === 0 && delta > 0;
+  const atLastPage = filterModuleState.currentPage === FILTER_PAGES.length - 1 && delta < 0;
+  if (atFirstPage || atLastPage) delta *= 0.22;
+  filterPageDragDeltaX = delta;
+  const rotation = Math.max(-13, Math.min(13, delta * -0.045));
+  filterBookRightPage.style.transform = `translateX(${delta}px) rotateY(${rotation}deg)`;
+}
+
+async function turnToPage(index, direction) {
+  if (
+    filterModuleState.isTurningPage
+    || index === filterModuleState.currentPage
+    || index < 0
+    || index >= FILTER_PAGES.length
+  ) return;
+  filterModuleState.isTurningPage = true;
+  playPageTurnSfx();
+  const halfDuration = PAGE_TURN_DURATION / 2;
+  const exitX = direction > 0 ? "-42%" : "42%";
+  const exitRotate = direction > 0 ? "18deg" : "-12deg";
+  await filterBookRightPage.animate([
+    { transform: filterBookRightPage.style.transform || "translateX(0) rotateY(0)", opacity: 1 },
+    { transform: `translateX(${exitX}) rotateY(${exitRotate})`, opacity: 0 },
+  ], { duration: halfDuration, easing: "ease-in", fill: "forwards" }).finished;
+  filterModuleState.currentPage = index;
+  renderFilterPage();
+  syncFilterRevealOverlay();
+  await filterBookRightPage.animate([
+    { transform: `translateX(${direction > 0 ? "24%" : "-24%"}) rotateY(${direction > 0 ? "-9deg" : "9deg"})`, opacity: 0 },
+    { transform: "translateX(0) rotateY(0)", opacity: 1 },
+  ], { duration: halfDuration, easing: "ease-out", fill: "forwards" }).finished;
+  filterBookRightPage.getAnimations().forEach(animation => animation.cancel());
+  filterBookRightPage.style.transform = "";
+  filterBookRightPage.style.opacity = "";
+  syncFilterRevealOverlay();
+  filterModuleState.isTurningPage = false;
+}
+
+function finishPageDrag(event) {
+  if (!filterModuleState.isDraggingPage || event.pointerId !== filterPagePointerId) return;
+  filterModuleState.isDraggingPage = false;
+  filterPagePointerId = null;
+  filterBookRightPage.classList.remove("is-dragging");
+  const delta = filterPageDragDeltaX;
+  filterPageDragDeltaX = 0;
+  if (delta <= -PAGE_TURN_THRESHOLD && filterModuleState.currentPage < FILTER_PAGES.length - 1) {
+    turnToPage(filterModuleState.currentPage + 1, 1);
+    return;
+  }
+  if (delta >= PAGE_TURN_THRESHOLD && filterModuleState.currentPage > 0) {
+    turnToPage(filterModuleState.currentPage - 1, -1);
+    return;
+  }
+  filterBookRightPage.animate([
+    { transform: filterBookRightPage.style.transform || "translateX(0) rotateY(0)" },
+    { transform: "translateX(0) rotateY(0)" },
+  ], { duration: 300, easing: "ease-out" }).finished.finally(() => {
+    if (!filterModuleState.isTurningPage) filterBookRightPage.style.transform = "";
+  });
+}
+
+function resetFilterFollowersToHome() {
+  if (filterFollowerRAF !== null) {
+    window.cancelAnimationFrame(filterFollowerRAF);
+    filterFollowerRAF = null;
+  }
+  Object.entries(filterFollower).forEach(([type, position]) => {
+    position.x = 0;
+    position.y = 0;
+    position.targetX = 0;
+    position.targetY = 0;
+    filterLensButtons[type].style.setProperty("--filter-offset-x", "0px");
+    filterLensButtons[type].style.setProperty("--filter-offset-y", "0px");
+  });
+}
+
+function resetFilterModule() {
+  releaseFilter(false);
+  resetFilterFollowersToHome();
+  filterModuleState.currentPage = 0;
+  filterModuleState.isTurningPage = false;
+  filterModuleState.isDraggingPage = false;
+  filterPagePointerId = null;
+  filterPageDragDeltaX = 0;
+  filterBookRightPage.classList.remove("is-dragging");
+  filterBookRightPage.getAnimations().forEach(animation => animation.cancel());
+  filterBookRightPage.style.transform = "";
+  filterBookRightPage.style.opacity = "";
+  filterModule.classList.remove("has-interacted");
+  renderFilterPage();
+}
+
+function openFilterModule() {
+  resetFilterModule();
+  filterModule.classList.add("is-active");
+  filterModule.setAttribute("aria-hidden", "false");
+  filterModule.focus({ preventScroll: true });
+  playFilterBgm();
+  window.requestAnimationFrame(() => {
+    syncFilterRevealOverlay();
+    updateFilterMask();
+  });
+}
+
+function closeFilterModule() {
+  releaseFilter(false);
+  resetFilterFollowersToHome();
+  stopFilterAudio();
+  filterModuleState.isTurningPage = false;
+  filterModuleState.isDraggingPage = false;
+  filterPagePointerId = null;
+  filterPageDragDeltaX = 0;
+  filterBookRightPage.classList.remove("is-dragging");
+  filterBookRightPage.getAnimations().forEach(animation => animation.cancel());
+  filterBookRightPage.style.transform = "";
+  filterBookRightPage.style.opacity = "";
+  filterModule.classList.remove("is-active");
+  filterModule.setAttribute("aria-hidden", "true");
+  if (tetraActiveFace === 2) completeTetraPlaceholderEvent();
+}
+
+function handleFilterResize() {
+  syncFilterRevealOverlay();
+  if (filterModuleState.activeFilter) setFilterTargetToPointer(filterModuleState.activeFilter);
+}
+
+Object.entries(filterLensButtons).forEach(([type, button]) => {
+  button.addEventListener("click", event => {
+    event.stopPropagation();
+    selectFilter(type, event);
+  });
+});
+filterModule.addEventListener("pointermove", handleFilterPointerMove);
+filterModule.addEventListener("click", event => {
+  if (filterModuleState.activeFilter && !event.target.closest(".filter-module-close")) releaseFilter();
+});
+filterBookRightPage.addEventListener("pointerdown", startPageDrag);
+filterBookRightPage.addEventListener("pointermove", updatePageDrag);
+filterBookRightPage.addEventListener("pointerup", finishPageDrag);
+filterBookRightPage.addEventListener("pointercancel", finishPageDrag);
+filterModuleClose.addEventListener("click", closeFilterModule);
+window.addEventListener("resize", handleFilterResize);
+
+applyFilterModuleLayout();
+filterBgmAudio.src = FILTER_AUDIO.bgm;
+filterBgmAudio.loop = true;
+filterBgmAudio.volume = FILTER_AUDIO_CONFIG.bgmVolume;
+filterPageTurnAudio.src = FILTER_AUDIO.pageTurn;
+filterPageTurnAudio.volume = FILTER_AUDIO_CONFIG.pageTurnVolume;
+renderFilterPage();
+updateFilterLayerOrder();
+
+window.chapter4FilterModule = Object.freeze({
+  pages: FILTER_PAGES,
+  state: filterModuleState,
+  open: openFilterModule,
+  close: closeFilterModule,
+  reset: resetFilterModule,
+  selectFilter,
+  releaseFilter,
+  turnToPage,
+});

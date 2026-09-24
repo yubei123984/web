@@ -34,6 +34,29 @@ const SYSTEM_PROMPT =
 问句尽量结合上下文改写，不要原样照搬列表，问句作为对话自然收尾，不要加引导命令。
 `;
 
+const GRANDPA_CLASSIFIER_PROMPT = `你是一个文本分类器。
+
+你的任务是判断用户是否提出了合理的 FOMO 自助疏导建议。
+
+如果用户表达了以下任意一种意思，返回 A：
+- 减少和别人比较
+- 把注意力放回自己
+- 按自己的节奏来
+- 不着急、慢慢来
+- 写下或说出自己的情绪
+- 呼吸、让身体慢下来
+- 换一个角度理解事情
+- 意识到别人展示的不一定是全部
+- 允许自己错过一些信息
+- 少刷手机、离开屏幕
+- 把时间和注意力留给现实生活
+- 休息一下
+- 做具体的小事
+
+如果用户不知道怎么办、没有提出任何方法、回答和问题无关、只是敷衍或内容无法判断，返回 B。
+
+只能返回 A 或 B，不能解释。`;
+
 
 app.post("/api/chat", async (req, res) => {
   try {
@@ -124,6 +147,74 @@ app.post("/api/chat", async (req, res) => {
 
     res.status(500).json({
       error: "服务器请求失败"
+    });
+  }
+});
+
+app.post("/api/classify-grandpa", async (req, res) => {
+  try {
+    const apiKey = process.env.ZHIPU_API_KEY;
+    const text = String(req.body?.text || "").trim();
+
+    if (!text) {
+      return res.json({ branch: "B" });
+    }
+
+    if (!apiKey) {
+      return res.status(503).json({ error: "classifier_unavailable" });
+    }
+
+    const response = await fetch(
+      "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "glm-4.7-flash",
+          messages: [
+            {
+              role: "system",
+              content: GRANDPA_CLASSIFIER_PROMPT,
+            },
+            {
+              role: "user",
+              content: text,
+            },
+          ],
+          thinking: { type: "disabled" },
+          max_tokens: 5,
+          temperature: 0,
+          stream: false,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("[Grandpa Classifier API Error]", response.status);
+      return res.status(response.status).json({ error: "classify_failed" });
+    }
+
+    const data = await response.json();
+
+    const raw =
+      data?.choices?.[0]?.message?.content
+        ?.trim()
+        ?.toUpperCase() || "";
+
+    if (raw !== "A" && raw !== "B") {
+      console.error("[Grandpa Classifier Invalid Response]");
+      return res.status(502).json({ error: "invalid_classifier_response" });
+    }
+
+    res.json({ branch: raw });
+  } catch (error) {
+    console.error("[Grandpa Classifier Error]", error);
+
+    res.status(500).json({
+      error: "classify_failed",
     });
   }
 });

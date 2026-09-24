@@ -242,6 +242,190 @@
             <button id="ai-send-button" class="ai-send-button" type="button">Send</button>
           </div>
         </aside>
+        <section class="chapter4-tetra-selector" aria-label="正四面体投掷选择器">
+          <div class="tetra-stage">
+            <canvas id="tetra-canvas" aria-hidden="true"></canvas>
+            <button class="tetra-hit-target" type="button" aria-label="点击投掷正四面体"></button>
+          </div>
+          <div class="tetra-progress" aria-label="体验完成状态">
+            <span data-tetra-status="1" aria-label="事件 1 未完成"></span>
+            <span data-tetra-status="2" aria-label="事件 2 未完成"></span>
+            <span data-tetra-status="3" aria-label="事件 3 未完成"></span>
+            <span data-tetra-status="4" aria-label="事件 4 未完成"></span>
+          </div>
+          <button class="tetra-round-reset" type="button" hidden>RESET</button>
+          <div class="tetra-event-placeholder" aria-hidden="true">
+            <p class="tetra-event-name"></p>
+            <button class="tetra-event-return" type="button">完成并返回</button>
+          </div>
+        </section>
+        <section class="tetris-module" aria-label="俄罗斯方块" aria-hidden="true" tabindex="-1">
+          <div class="tetris-machine-scene">
+            <div class="tetris-machine-column">
+              <div class="tetris-machine-root">
+                <img class="tetris-machine-base" src="./pic/forth/touzi/gameboy.png" alt="游戏机底图" draggable="false" />
+                <img class="tetris-machine-screen" src="./pic/forth/touzi/screen.png" alt="游戏机屏幕" draggable="false" />
+                <div class="tetris-area" data-reference-src="./pic/forth/touzi/area.png">
+                  <div class="tetris-game">
+                    <div class="tetris-board-wrap">
+                      <canvas id="tetris-canvas" aria-label="俄罗斯方块棋盘"></canvas>
+                      <div class="tetris-particles" aria-hidden="true"></div>
+                    </div>
+                  </div>
+                  <div class="tetris-game-over" aria-hidden="true">
+                    <p>GAME OVER</p>
+                    <button type="button" data-tetris-action="game-over-restart">RESTART</button>
+                  </div>
+                </div>
+                <div class="tetris-machine-buttons" aria-label="游戏机控制按钮">
+                  <button class="tetris-machine-button" type="button" data-tetris-control="up" aria-label="快速下落">
+                    <img src="./pic/forth/touzi/up.png" alt="" draggable="false" />
+                  </button>
+                  <button class="tetris-machine-button" type="button" data-tetris-control="down" aria-label="向下移动">
+                    <img src="./pic/forth/touzi/down.png" alt="" draggable="false" />
+                  </button>
+                  <button class="tetris-machine-button" type="button" data-tetris-control="left" aria-label="向左移动">
+                    <img src="./pic/forth/touzi/left.png" alt="" draggable="false" />
+                  </button>
+                  <button class="tetris-machine-button" type="button" data-tetris-control="right" aria-label="向右移动">
+                    <img src="./pic/forth/touzi/right.png" alt="" draggable="false" />
+                  </button>
+                  <button class="tetris-machine-button" type="button" data-tetris-control="rotate" aria-label="旋转方块">
+                    <img src="./pic/forth/touzi/rotate.png" alt="" draggable="false" />
+                  </button>
+                </div>
+                <button class="tetris-device-exit" type="button" aria-label="退出俄罗斯方块">
+                  <img src="./pic/forth/touzi/exit.png" alt="" draggable="false" />
+                </button>
+              </div>
+              <div class="tetris-controls">
+                <button type="button" data-tetris-action="restart">重新开始</button>
+              </div>
+            </div>
+            <aside class="tetris-info-panel" aria-label="俄罗斯方块游戏信息">
+              <section class="tetris-info-block">
+                <h2>SCORE</h2>
+                <output class="tetris-score" aria-live="polite">000000</output>
+              </section>
+              <section class="tetris-info-block">
+                <h2>NEXT</h2>
+                <div class="tetris-next-frame">
+                  <canvas id="tetris-next-canvas" aria-label="下一个方块预览"></canvas>
+                </div>
+              </section>
+              <button class="tetris-exit-button" type="button" data-tetris-action="exit">[ EXIT ]</button>
+            </aside>
+          </div>
+        </section>
+        <section class="filter-module" aria-label="滤光片认知重评模块" aria-hidden="true" tabindex="-1" data-active-filter="none">
+          <div class="filter-book" aria-label="认知重评笔记本">
+            <div class="filter-book-page filter-book-page--left" aria-hidden="true">
+              <span class="filter-book-kicker">another point of view</span>
+              <div class="filter-taiji">
+                <svg viewBox="0 0 100 100" aria-hidden="true">
+                  <circle cx="50" cy="50" r="48.5" fill="#fff" stroke="#111" stroke-width="3"></circle>
+                  <path d="M50 1.5a48.5 48.5 0 0 1 0 97 24.25 24.25 0 0 1 0-48.5 24.25 24.25 0 0 0 0-48.5Z" fill="#111"></path>
+                  <circle cx="50" cy="25.75" r="7" fill="#fff"></circle>
+                  <circle cx="50" cy="74.25" r="7" fill="#111"></circle>
+                </svg>
+              </div>
+            </div>
+            <div class="filter-book-spine" aria-hidden="true"></div>
+            <article class="filter-book-page filter-book-page--right">
+              <div class="filter-page-copy">
+                <h2 class="filter-page-title"></h2>
+                <div class="filter-text-stack">
+                  <p class="filter-text-layer filter-text-layer--black"></p>
+                  <p class="filter-text-layer filter-text-layer--white"></p>
+                </div>
+                <span class="filter-page-count" aria-live="polite">01 / 08</span>
+              </div>
+            </article>
+          </div>
+
+          <div class="filter-reveal-overlay" aria-hidden="true">
+            <p class="filter-reveal-layer filter-reveal-layer--black"></p>
+            <p class="filter-reveal-layer filter-reveal-layer--white"></p>
+          </div>
+
+          <div class="filter-control-group filter-control-group--black">
+            <button class="filter-lens filter-lens--black" type="button" data-filter-type="black" aria-label="选择黑色滤片">
+              <img src="./pic/forth/touzi/black_filter.png" alt="黑色滤片" draggable="false" />
+            </button>
+            <p>你以为的 / 自动想法 / 消极解释</p>
+          </div>
+          <div class="filter-control-group filter-control-group--white">
+            <button class="filter-lens filter-lens--white" type="button" data-filter-type="white" aria-label="选择白色滤片">
+              <img src="./pic/forth/touzi/white_filter.png" alt="白色滤片" draggable="false" />
+            </button>
+            <p>实际的 / 另一种解释 / 更完整解释</p>
+          </div>
+
+          <p class="filter-module-hint">点击眼镜查看另一层文字 · 滑动右页翻页</p>
+          <button class="filter-module-close" type="button">CLOSE</button>
+          <audio class="filter-module-bgm" preload="auto" loop></audio>
+          <audio class="filter-module-page-turn" preload="auto"></audio>
+        </section>
+        <section class="breathing-clock-module" aria-label="4-6 呼吸钟" aria-hidden="true" tabindex="-1">
+          <p class="breathing-clock-intro" aria-live="polite"></p>
+          <div class="breathing-clock-panel">
+            <div class="breathing-clock-stage">
+              <div class="breathing-clock-visual-viewport">
+                <div class="breathing-clock-root" data-clock-mode="morning">
+                  <div class="breathing-clock-bg" aria-hidden="true">
+                    <img class="breathing-clock-gif breathing-clock-gif--morning is-visible" src="./pic/forth/touzi/morning.gif" alt="" />
+                    <img class="breathing-clock-gif breathing-clock-gif--evening" src="./pic/forth/touzi/evening.gif" alt="" />
+                  </div>
+                  <div class="breathing-clock-hand-layer" aria-hidden="true">
+                    <span class="breathing-clock-hand"></span>
+                  </div>
+                  <img class="breathing-clock-face" src="./pic/forth/touzi/clock_face.png" alt="钟面线稿" draggable="false" />
+                  <span class="breathing-clock-center-cap" aria-hidden="true"></span>
+                </div>
+              </div>
+              <p class="breathing-clock-status" aria-live="polite">准备</p>
+              <button class="breathing-pull-switch" type="button" aria-label="拉动开关切换清晨和黄昏">
+                <svg class="breathing-switch-line" viewBox="0 0 120 360" aria-hidden="true">
+                  <path class="breathing-switch-path" d="M 60 8 L 60 190"></path>
+                </svg>
+                <span class="breathing-switch-handle" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="breathing-clock-controls">
+              <button type="button" data-breathing-action="start">START</button>
+              <button type="button" data-breathing-action="reset">RESET</button>
+              <button type="button" data-breathing-action="close">CLOSE</button>
+            </div>
+          </div>
+          <audio class="breathing-clock-ding" src="./pic/forth/touzi/ding.wav" preload="auto"></audio>
+          <audio class="breathing-clock-audio breathing-clock-audio--morning" src="./pic/forth/touzi/morning.mp3" preload="auto" loop></audio>
+          <audio class="breathing-clock-audio breathing-clock-audio--evening" src="./pic/forth/touzi/evening.mp3" preload="auto" loop></audio>
+        </section>
+        <section class="grandpa-dialogue-module" aria-label="老爷爷对话模块" aria-hidden="true" tabindex="-1">
+          <div class="grandpa-dialogue-scene">
+            <div class="grandpa-bg-layer" aria-hidden="true">
+              <img class="grandpa-bg-loop" src="./pic/forth/touzi/flower_2.gif" alt="" draggable="false" />
+            </div>
+            <button class="grandpa-sprite" type="button" aria-label="点击老爷爷继续对话">
+              <img src="./pic/forth/touzi/man_01.png" alt="老爷爷" draggable="false" />
+            </button>
+            <p class="grandpa-speech-bubble" aria-live="polite">点击左下花丛，让故事开始。</p>
+            <div class="grandpa-phone-panel" aria-label="手机搜索结果" aria-hidden="true">
+              <div class="grandpa-phone-frame">
+                <img class="grandpa-phone-frame-image" src="./pic/forth/touzi/phone1.png" alt="" draggable="false" />
+                <div class="grandpa-phone-mask" tabindex="0" aria-label="滚动查看手机内容">
+                  <img class="grandpa-phone-scroll-content" src="./pic/forth/touzi/phone.png" alt="手机中的搜索结果" draggable="false" />
+                </div>
+              </div>
+            </div>
+            <form class="grandpa-input-panel" hidden>
+              <input type="text" placeholder="请输入你的回答……" aria-label="回答老爷爷" autocomplete="off" />
+              <button type="submit">SEND</button>
+            </form>
+            <button class="grandpa-close" type="button">CLOSE</button>
+          </div>
+          <audio class="grandpa-dialogue-audio" preload="auto"></audio>
+        </section>
         <div class="letter-reading-layer" aria-hidden="true">
           <button class="letter-reading-backdrop" type="button" tabindex="-1" aria-label="关闭信件"></button>
           <div class="letter-paper-stack">
