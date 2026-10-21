@@ -11,6 +11,8 @@ const glitchPixels = document.querySelector(".glitch-pixels");
 const glitchNoise = document.querySelector(".glitch-noise");
 const cubeSceneElement = document.querySelector(".cube-scene");
 const canvas = document.querySelector("#cube-canvas");
+const chapter1AudioVisualizer = document.querySelector(".chapter1-audio-visualizer");
+const chapter1AudioVisualizerBars = document.querySelector(".chapter1-audio-visualizer-bars");
 const escapeButton = document.querySelector(".escape-button");
 const chapterCompleteElement = document.querySelector(".chapter-complete");
 const chapter2Element = document.querySelector(".chapter2-scene");
@@ -42,12 +44,64 @@ const birdFrontLayer = document.querySelector(".bird-flight-layer--front");
 const chapter3Video = document.querySelector(".chapter3-video");
 const chapter3CompleteElement = document.querySelector(".chapter3-complete");
 const chapter4Element = document.querySelector(".chapter4-scene");
+const chapter4LabelElements = new Map(
+  Array.from(document.querySelectorAll(".chapter4-element-label"), element => [
+    element.dataset.label,
+    element,
+  ])
+);
+const selfAssessmentElements = new Map(
+  Array.from(document.querySelectorAll("[data-assessment]"), element => [
+    element.dataset.assessment,
+    element,
+  ])
+);
+
+const CH4_LABEL_SOURCE_SIZE = Object.freeze({ width: 1490, height: 768 });
+const CH4_LABEL_SOURCES = Object.freeze({
+  puzzle: Object.freeze({ crop: [962, 23, 1041, 133] }),
+  music: Object.freeze({ crop: [360, 517, 425, 642] }),
+  letter: Object.freeze({ crop: [976, 573, 1013, 643] }),
+  ai: Object.freeze({ crop: [1220, 649, 1374, 730] }),
+  tetra: Object.freeze({ crop: [31, 174, 145, 234] }),
+  plant: Object.freeze({ crop: [24, 454, 148, 519] }),
+});
+const CH4_LABEL_LAYOUT = {
+  ai: { x: 0.866, y: 0.882 },
+  letter: { x: 0.678, y: 0.7917 },
+  music: { x: 0.266, y: 0.798 },
+  plant: { x: 0.119, y: 0.642 },
+  puzzle: { x: 0.673, y: 0.208 },
+  tetra: { x: 0.119, y: 0.287 },
+};
+
+function updateChapter4LabelLayout() {
+  Object.entries(CH4_LABEL_SOURCES).forEach(([name, source]) => {
+    const element = chapter4LabelElements.get(name);
+    const layout = CH4_LABEL_LAYOUT[name];
+    if (!element || !layout) return;
+    const [x0, y0, x1, y1] = source.crop;
+    const sourceX = (x0 + x1) / 2 / CH4_LABEL_SOURCE_SIZE.width;
+    const sourceY = (y0 + y1) / 2 / CH4_LABEL_SOURCE_SIZE.height;
+    const top = y0 / CH4_LABEL_SOURCE_SIZE.height * 100;
+    const right = (1 - x1 / CH4_LABEL_SOURCE_SIZE.width) * 100;
+    const bottom = (1 - y1 / CH4_LABEL_SOURCE_SIZE.height) * 100;
+    const left = x0 / CH4_LABEL_SOURCE_SIZE.width * 100;
+    element.style.clipPath = `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+    element.style.transform = `translate(${(layout.x - sourceX) * 100}%, ${(layout.y - sourceY) * 100}%)`;
+  });
+}
+
+updateChapter4LabelLayout();
 
 let currentState = "idle";
 let glitchTimer = null;
 let glitchInterval = null;
 let glitchImpactTimer = null;
 let audioContext = null;
+let activeSelfAssessment = null;
+let preAssessmentPresented = false;
+let preAssessmentCompleted = false;
 
 // 统一音效事件接口：后续音频模块只需订阅事件，不必改交互逻辑
 const SOUND_EVENTS = Object.freeze({
@@ -102,6 +156,27 @@ const CHAPTER1_MUSIC_VOLUME_MAX = 1;
 const CHAPTER1_MUSIC_FADE_OUT = 500;
 const chapter1AudioTracks = {};
 let chapter1MusicFadeFrame = null;
+let chapter1BgmSourceNode = null;
+let chapter1Analyser = null;
+let chapter1FrequencyData = null;
+let chapter1VisualizerAudioConnected = false;
+let chapter1VisualizerBars = [];
+let chapter1VisualizerHeights = [];
+const CH1_VISUALIZER = Object.freeze({
+  barCount: 120,
+  minHeight: 4,
+  maxHeight: 110,
+  gap: 3,
+  lineWidth: 2,
+  amplitude: 2.6,
+  smoothing: 0.55,
+  analyserSmoothing: 0.55,
+  fftSize: 256,
+  sampleStartBin: 3,
+  sampleEndBin: 56,
+  signalCurve: 0.75,
+  edgeGain: 0.72,
+});
 for (const [name, path] of Object.entries(CHAPTER1_AUDIO)) {
   if (!path) continue;
   try {
@@ -180,9 +255,119 @@ function playConfirmSound() { playChapter1Audio("confirm"); }
 function playGlitchSound() { playChapter1Audio("glitch"); }
 function playCardHoverSound() { playChapter1Audio("cardHover"); }
 function playDoorOpenSound() { playChapter1Audio("doorOpen"); }
+function createChapter1VisualizerBars() {
+  if (!chapter1AudioVisualizerBars || chapter1VisualizerBars.length > 0) return;
+  const fragment = document.createDocumentFragment();
+  chapter1VisualizerBars = Array.from({ length: CH1_VISUALIZER.barCount }, (_, index) => {
+    const bar = document.createElement("span");
+    bar.className = "chapter1-audio-visualizer-bar";
+    bar.dataset.barIndex = String(index);
+    bar.style.height = `${CH1_VISUALIZER.minHeight}px`;
+    fragment.appendChild(bar);
+    return bar;
+  });
+  chapter1VisualizerHeights = Array(CH1_VISUALIZER.barCount).fill(CH1_VISUALIZER.minHeight);
+  chapter1AudioVisualizerBars.style.setProperty("--ch1-visualizer-gap", `${CH1_VISUALIZER.gap}px`);
+  chapter1AudioVisualizerBars.style.setProperty("--ch1-visualizer-line-width", `${CH1_VISUALIZER.lineWidth}px`);
+  chapter1AudioVisualizerBars.replaceChildren(fragment);
+}
+
+function initChapter1VisualizerAudio() {
+  const bgm = chapter1AudioTracks.bgm;
+  if (!audioContext || !bgm) return false;
+  createChapter1VisualizerBars();
+  if (chapter1VisualizerAudioConnected) return true;
+  try {
+    if (!chapter1BgmSourceNode) chapter1BgmSourceNode = audioContext.createMediaElementSource(bgm);
+    if (!chapter1Analyser) {
+      chapter1Analyser = audioContext.createAnalyser();
+      chapter1Analyser.fftSize = CH1_VISUALIZER.fftSize;
+      chapter1Analyser.smoothingTimeConstant = CH1_VISUALIZER.analyserSmoothing;
+      chapter1FrequencyData = new Uint8Array(chapter1Analyser.frequencyBinCount);
+    }
+    chapter1BgmSourceNode.disconnect();
+    chapter1Analyser.disconnect();
+    chapter1BgmSourceNode.connect(chapter1Analyser);
+    chapter1Analyser.connect(audioContext.destination);
+    chapter1VisualizerAudioConnected = true;
+    return true;
+  } catch (error) {
+    console.warn("[Chapter1 visualizer] 音频分析初始化失败", error);
+    return false;
+  }
+}
+
+function startChapter1AudioVisualizer() {
+  createChapter1VisualizerBars();
+  initChapter1VisualizerAudio();
+  chapter1AudioVisualizer?.classList.add("is-active");
+  chapter1AudioVisualizer?.setAttribute("aria-hidden", "false");
+}
+
+function stopChapter1AudioVisualizer() {
+  chapter1AudioVisualizer?.classList.remove("is-active");
+  chapter1AudioVisualizer?.setAttribute("aria-hidden", "true");
+  chapter1VisualizerHeights.fill(CH1_VISUALIZER.minHeight);
+  chapter1VisualizerBars.forEach((bar) => {
+    bar.style.height = `${CH1_VISUALIZER.minHeight}px`;
+  });
+}
+
+function updateChapter1AudioVisualizer() {
+  if (!chapter1Analyser || !chapter1FrequencyData || chapter1VisualizerBars.length === 0) return;
+  chapter1Analyser.getByteFrequencyData(chapter1FrequencyData);
+  const halfBarCount = CH1_VISUALIZER.barCount / 2;
+  const lastFrequencyBin = chapter1FrequencyData.length - 1;
+  const sampleStartBin = THREE.MathUtils.clamp(CH1_VISUALIZER.sampleStartBin, 1, lastFrequencyBin);
+  const sampleEndBin = THREE.MathUtils.clamp(
+    CH1_VISUALIZER.sampleEndBin,
+    sampleStartBin,
+    lastFrequencyBin
+  );
+  const heightRange = CH1_VISUALIZER.maxHeight - CH1_VISUALIZER.minHeight;
+
+  for (let sampleIndex = 0; sampleIndex < halfBarCount; sampleIndex += 1) {
+    const progress = halfBarCount === 1 ? 0 : sampleIndex / (halfBarCount - 1);
+    const centerBin = Math.round(
+      THREE.MathUtils.lerp(sampleStartBin, sampleEndBin, Math.pow(progress, 0.9))
+    );
+    const firstBin = Math.max(sampleStartBin, centerBin - 1);
+    const finalBin = Math.min(sampleEndBin, centerBin + 1);
+    let frequencyValue = 0;
+    for (let bin = firstBin; bin <= finalBin; bin += 1) {
+      frequencyValue += chapter1FrequencyData[bin];
+    }
+    frequencyValue /= finalBin - firstBin + 1;
+
+    const normalized = frequencyValue / 255;
+    const enhanced = Math.pow(normalized, CH1_VISUALIZER.signalCurve);
+    const spatialGain = THREE.MathUtils.lerp(1, CH1_VISUALIZER.edgeGain, progress);
+    const targetHeight = THREE.MathUtils.clamp(
+      CH1_VISUALIZER.minHeight
+        + enhanced * heightRange * CH1_VISUALIZER.amplitude * spatialGain,
+      CH1_VISUALIZER.minHeight,
+      CH1_VISUALIZER.maxHeight
+    );
+    const leftBarIndex = halfBarCount - 1 - sampleIndex;
+    const rightBarIndex = halfBarCount + sampleIndex;
+    const nextHeight = THREE.MathUtils.lerp(
+      chapter1VisualizerHeights[rightBarIndex],
+      targetHeight,
+      1 - CH1_VISUALIZER.smoothing
+    );
+    const height = `${nextHeight.toFixed(2)}px`;
+
+    chapter1VisualizerHeights[leftBarIndex] = nextHeight;
+    chapter1VisualizerHeights[rightBarIndex] = nextHeight;
+    chapter1VisualizerBars[leftBarIndex].style.height = height;
+    chapter1VisualizerBars[rightBarIndex].style.height = height;
+  }
+}
+
 function startChapter1Music() {
   if (chapter1MusicFadeFrame !== null) cancelAnimationFrame(chapter1MusicFadeFrame);
   chapter1MusicFadeFrame = null;
+  initChapter1VisualizerAudio();
   playChapter1Audio("bgm");
 }
 function stopChapter1Music() {
@@ -255,6 +440,264 @@ function setState(nextState) {
     String(currentState !== "chapter3Complete")
   );
 }
+
+const SELF_ASSESSMENT_QUESTIONS = Object.freeze({
+  pre: Object.freeze([
+    "最近一段时间，我会频繁查看社交媒体，担心错过新的消息、动态或机会。",
+    "当看到别人分享学习、工作、旅行、消费或生活成果时，我容易拿自己的状态与对方比较。",
+    "即使没有明确目的，我也会不自觉地继续刷新、浏览或切换应用。",
+    "社交媒体上的信息会影响我原本的安排，比如打断学习、创作、休息或现实活动。",
+    "当我暂时离开手机或没有及时查看消息时，会有一点不安或想尽快补看的冲动。",
+  ]),
+  post: Object.freeze([
+    "和刚才相比，我现在对“错过一些信息”没有那么紧张。",
+    "我能更清楚地区分：哪些信息需要关注，哪些可以暂时放下。",
+    "当再次出现比较或焦虑感时，我知道可以先暂停一下，而不是立刻继续刷新。",
+    "我现在更愿意把一部分注意力放回自己的生活、兴趣或现实活动。",
+    "这次体验让我更清楚地意识到，焦虑不一定来自“我真的落后”，也可能来自持续比较和信息过载。",
+  ]),
+});
+
+const SELF_ASSESSMENT_FEEDBACK = Object.freeze([
+  "你似乎比刚才更能接受：错过一些信息，并不等于错过生活。",
+  "变化不一定立刻发生，但你已经开始意识到：焦虑常常来自不断比较和持续刷新。",
+  "没有马上轻松下来也没关系。至少现在，你已经更清楚地看见了这些感受从哪里来。",
+]);
+
+const selfAssessmentState = {
+  pre: null,
+  post: null,
+};
+
+function createSelfAssessmentQuestions(type) {
+  const assessmentElement = selfAssessmentElements.get(type);
+  const questionList = assessmentElement?.querySelector(".self-assessment-questions");
+  if (!assessmentElement || !questionList) return;
+
+  const fragment = document.createDocumentFragment();
+  SELF_ASSESSMENT_QUESTIONS[type].forEach((question, index) => {
+    const questionElement = document.createElement("div");
+    const inputId = `${type}-assessment-${index + 1}`;
+    questionElement.className = "self-assessment-question";
+    questionElement.innerHTML = `
+      <label for="${inputId}">
+        <span class="self-assessment-question-number">${String(index + 1).padStart(2, "0")}</span>
+        <span>${question}</span>
+      </label>
+      <div class="self-assessment-slider-row">
+        <input
+          class="self-assessment-range"
+          id="${inputId}"
+          name="question-${index + 1}"
+          type="range"
+          min="0"
+          max="4"
+          step="1"
+          value="0"
+          data-selected="false"
+          aria-valuetext="尚未选择"
+        />
+        <output class="self-assessment-value" for="${inputId}">—</output>
+      </div>
+      <div class="self-assessment-ticks" aria-hidden="true">
+        <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span>
+      </div>
+    `;
+    fragment.appendChild(questionElement);
+  });
+  questionList.replaceChildren(fragment);
+}
+
+function getAssessmentInputs(assessmentElement) {
+  return Array.from(assessmentElement.querySelectorAll(".self-assessment-range"));
+}
+
+function updateSelfAssessmentProgress(type) {
+  const assessmentElement = selfAssessmentElements.get(type);
+  if (!assessmentElement) return;
+  const inputs = getAssessmentInputs(assessmentElement);
+  const selectedCount = inputs.filter(input => input.dataset.selected === "true").length;
+  const progress = assessmentElement.querySelector(".self-assessment-progress");
+  const submit = assessmentElement.querySelector(".self-assessment-submit");
+  progress.textContent = selectedCount === inputs.length
+    ? "已完成 5 / 5"
+    : `已完成 ${selectedCount} / ${inputs.length}`;
+  submit.disabled = selectedCount !== inputs.length;
+}
+
+function openSelfAssessment(type) {
+  const assessmentElement = selfAssessmentElements.get(type);
+  if (!assessmentElement || activeSelfAssessment) return;
+  if (type === "post" && selfAssessmentState.post) return;
+  activeSelfAssessment = type;
+  assessmentElement.classList.add("is-visible");
+  assessmentElement.setAttribute("aria-hidden", "false");
+  window.requestAnimationFrame(() => {
+    assessmentElement.querySelector(".self-assessment-range")?.focus();
+  });
+}
+
+function closeSelfAssessment(type) {
+  const assessmentElement = selfAssessmentElements.get(type);
+  if (!assessmentElement) return;
+  assessmentElement.classList.remove("is-visible");
+  assessmentElement.setAttribute("aria-hidden", "true");
+  if (activeSelfAssessment === type) activeSelfAssessment = null;
+}
+
+function getPostAssessmentFeedback(postTotal) {
+  const preTotal = selfAssessmentState.pre?.total;
+  if (!Number.isFinite(preTotal)) return SELF_ASSESSMENT_FEEDBACK[1];
+  const postDistressEquivalent = 20 - postTotal;
+  const improvement = preTotal - postDistressEquivalent;
+  if (improvement >= 4) return SELF_ASSESSMENT_FEEDBACK[0];
+  if (improvement > 0) return SELF_ASSESSMENT_FEEDBACK[1];
+  return SELF_ASSESSMENT_FEEDBACK[2];
+}
+
+function renderPostAssessmentResult(postTotal) {
+  const assessmentElement = selfAssessmentElements.get("post");
+  const feedback = assessmentElement?.querySelector(".self-assessment-feedback");
+  const preTotal = selfAssessmentState.pre?.total;
+  if (!feedback || !Number.isFinite(preTotal) || !Number.isFinite(postTotal)) return;
+
+  const maxTotal = SELF_ASSESSMENT_QUESTIONS.post.length * 4;
+  const chartTop = 20;
+  const chartBottom = 170;
+  const chartHeight = chartBottom - chartTop;
+  const scoreToY = score => {
+    const safeScore = Math.min(maxTotal, Math.max(0, score));
+    return chartBottom - (safeScore / maxTotal) * chartHeight;
+  };
+  const preY = scoreToY(preTotal);
+  const postY = scoreToY(postTotal);
+  const preX = 104;
+  const postX = 280;
+  const setAttributes = (selector, attributes) => {
+    const element = feedback.querySelector(selector);
+    if (!element) return;
+    Object.entries(attributes).forEach(([name, value]) => element.setAttribute(name, String(value)));
+  };
+
+  setAttributes(".self-assessment-chart-line", { x1: preX, y1: preY, x2: postX, y2: postY });
+  setAttributes(".self-assessment-chart-point--pre", { cx: preX, cy: preY });
+  setAttributes(".self-assessment-chart-point--post", { cx: postX, cy: postY });
+  setAttributes(".self-assessment-chart-score--pre", { x: preX, y: Math.max(14, preY - 11) });
+  setAttributes(".self-assessment-chart-score--post", { x: postX, y: Math.max(14, postY - 11) });
+
+  const preScore = feedback.querySelector(".self-assessment-chart-score--pre");
+  const postScore = feedback.querySelector(".self-assessment-chart-score--post");
+  const preSummary = feedback.querySelector('[data-assessment-result="pre"]');
+  const postSummary = feedback.querySelector('[data-assessment-result="post"]');
+  const changeSummary = feedback.querySelector('[data-assessment-result="change"]');
+  const chartTitle = feedback.querySelector("#self-assessment-result-title");
+  const change = postTotal - preTotal;
+  const formattedChange = change > 0 ? `+${change}` : String(change);
+
+  if (preScore) preScore.textContent = String(preTotal);
+  if (postScore) postScore.textContent = String(postTotal);
+  if (preSummary) preSummary.textContent = `前测总分：${preTotal}`;
+  if (postSummary) postSummary.textContent = `后测总分：${postTotal}`;
+  if (changeSummary) changeSummary.textContent = `变化：${formattedChange}`;
+  if (chartTitle) chartTitle.textContent = `第一次测试总分 ${preTotal}，第二次测试总分 ${postTotal}`;
+
+  const feedbackCopy = feedback.querySelector(".self-assessment-feedback-copy");
+  if (feedbackCopy) feedbackCopy.textContent = getPostAssessmentFeedback(postTotal);
+}
+
+function saveSelfAssessment(type, values) {
+  const total = values.reduce((sum, value) => sum + value, 0);
+  selfAssessmentState[type] = Object.freeze({
+    responses: Object.freeze([...values]),
+    total,
+    completedAt: new Date().toISOString(),
+  });
+  window.dispatchEvent(new CustomEvent("fomo:self-assessment", {
+    detail: { type, responses: [...values], total },
+  }));
+  return total;
+}
+
+for (const type of ["pre", "post"]) {
+  createSelfAssessmentQuestions(type);
+  const assessmentElement = selfAssessmentElements.get(type);
+  const form = assessmentElement?.querySelector(".self-assessment-form");
+  if (!assessmentElement || !form) continue;
+
+  const selectAssessmentValue = input => {
+    input.dataset.selected = "true";
+    input.setAttribute("aria-valuetext", input.value);
+    input.style.setProperty("--range-progress", `${Number(input.value) * 25}%`);
+    const output = input.closest(".self-assessment-slider-row")?.querySelector("output");
+    if (output) output.value = input.value;
+    updateSelfAssessmentProgress(type);
+  };
+
+  form.addEventListener("input", event => {
+    const input = event.target.closest(".self-assessment-range");
+    if (input) selectAssessmentValue(input);
+  });
+
+  form.addEventListener("pointerdown", event => {
+    const input = event.target.closest(".self-assessment-range");
+    if (input) selectAssessmentValue(input);
+  });
+
+  form.addEventListener("keydown", event => {
+    const input = event.target.closest(".self-assessment-range");
+    const rangeKeys = [
+      "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown",
+    ];
+    if (input && rangeKeys.includes(event.key)) selectAssessmentValue(input);
+  });
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const inputs = getAssessmentInputs(assessmentElement);
+    if (inputs.some(input => input.dataset.selected !== "true")) return;
+    const values = inputs.map(input => Number(input.value));
+    const total = saveSelfAssessment(type, values);
+
+    if (type === "pre") {
+      preAssessmentCompleted = true;
+      closeSelfAssessment(type);
+      finalPhaseStartTime = performance.now();
+      return;
+    }
+
+    form.hidden = true;
+    const feedback = assessmentElement.querySelector(".self-assessment-feedback");
+    renderPostAssessmentResult(total);
+    feedback.hidden = false;
+    feedback.querySelector("button")?.focus();
+  });
+}
+
+const postAssessmentFinishButton = selfAssessmentElements
+  .get("post")
+  ?.querySelector(".self-assessment-finish");
+postAssessmentFinishButton?.addEventListener("click", () => {
+  closeSelfAssessment("post");
+  window.dispatchEvent(new CustomEvent("fomo:postAssessmentComplete", {
+    detail: { ...selfAssessmentState.post },
+  }));
+});
+
+window.fomoSelfAssessment = Object.freeze({
+  open: openSelfAssessment,
+  getState() {
+    return {
+      pre: selfAssessmentState.pre && {
+        ...selfAssessmentState.pre,
+        responses: [...selfAssessmentState.pre.responses],
+      },
+      post: selfAssessmentState.post && {
+        ...selfAssessmentState.post,
+        responses: [...selfAssessmentState.post.responses],
+      },
+    };
+  },
+});
 
 // 1A 弹窗延迟：单位为毫秒
 const MODAL_DELAY = 1500;
@@ -417,6 +860,7 @@ function unlockAudioSystem() {
 function startAudioExperience() {
   cubeSceneElement.dataset.audioState = "started";
   updateAudioPressure(0);
+  startChapter1AudioVisualizer();
   triggerSoundEvent(SOUND_EVENTS.environmentStart);
 }
 
@@ -447,6 +891,7 @@ function updateAudioPressure(progress) {
 
 function stopAudioExperience() {
   stopChapter1Music();
+  stopChapter1AudioVisualizer();
   cubeSceneElement.dataset.audioState = "stopped";
   cubeSceneElement.dataset.audioIntensity = "0";
   cubeSceneElement.dataset.audioStage = "stopped";
@@ -484,10 +929,12 @@ let detailRoomLineObject = null;
 let doorLineObject = null;
 let doorHandleObject = null;
 
-// 第一章墙面正式素材：三面墙复用贴图，随现有房间收缩更新顶点。
+// 第一章墙面正式素材：三面墙各自持有贴图偏移，共同形成连续环流。
 const chapter1WallMeshes = [];
 const WALL_REPEAT_X = 1.5;
 const WALL_SCROLL_SPEED = 0.12;
+// 纹理 offset 与画面运动方向相反；配合各墙 UV，视觉路径为左墙 → 远端墙 → 右墙。
+const WALL_SCROLL_OFFSET_DIRECTIONS = Object.freeze([-1, 1, -1]);
 let wallScrollProgress = 0;
 const chapter1WallTexture = new THREE.TextureLoader().load(
   new URL("./pic/first/wall_loop_strip.png", import.meta.url).href,
@@ -508,12 +955,11 @@ for (let index = 0; index < 3; index += 1) {
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
   geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(8), 2));
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
-  const material = index < 2 ? chapter1WallMaterial.clone() : chapter1WallMaterial;
-  if (index < 2) {
-    material.map = chapter1WallTexture.clone();
-    material.map.repeat.set(WALL_REPEAT_X, 1);
-    material.map.needsUpdate = true;
-  }
+  const material = chapter1WallMaterial.clone();
+  material.map = chapter1WallTexture.clone();
+  material.map.wrapS = THREE.RepeatWrapping;
+  material.map.repeat.set(index < 2 ? WALL_REPEAT_X : 1, 1);
+  material.map.needsUpdate = true;
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
   roomGroup.add(mesh);
@@ -556,13 +1002,8 @@ function updateChapter1Walls(near, far) {
 
 // 1C 卡片基础参数 + 1D 统一压力参数：集中在这里调整
 const PRESSURE_DURATION = 15000;
-const ROOM_MIN_WIDTH_FACTOR = 0.45;
-const ROOM_MIN_HEIGHT_FACTOR = 0.5;
-const ROOM_CRITICAL_WIDTH_FACTOR = 0.2;
-const ROOM_CRITICAL_HEIGHT_FACTOR = 0.24;
 const CRITICAL_PRESSURE_TIME_CONSTANT = 10000;
 const PERSPECTIVE_LINE_EXTENSION = 1;
-const PERSPECTIVE_LINE_EXTENSION_MAX = 1.35;
 const CARD_SPAWN_START = 850;
 const CARD_SPAWN_END = 220;
 const ESCAPE_REVEAL_THRESHOLD = 0.75;
@@ -806,6 +1247,7 @@ function buildDoor(zPosition, widthFactor, heightFactor) {
     doorLines
   );
   doorLineObject = updateLineObject(doorLineObject, doorLines, doorMaterial);
+  doorLineObject.renderOrder = 10;
 
   const handleCurve = new THREE.EllipseCurve(
     door.handleX,
@@ -824,6 +1266,7 @@ function buildDoor(zPosition, widthFactor, heightFactor) {
     doorMaterial,
     THREE.Line
   );
+  doorHandleObject.renderOrder = 11;
 }
 
 function renderCubeScene() {
@@ -985,7 +1428,7 @@ function updateCards(deltaTime) {
 }
 
 function updateEscapeButtonPosition() {
-  // 门板中心世界坐标；随房间收缩与响应式投影同步移动
+  // 门板中心世界坐标；房间尺寸固定，仅随响应式投影同步移动。
   escapeAnchor.set(
     0,
     -1.4 * currentRoomHeightFactor,
@@ -1040,38 +1483,11 @@ function updatePressure(currentTime) {
   const elapsedPressureTime = Math.max(0, currentTime - pressureStartTime);
   pressureProgress = THREE.MathUtils.clamp(elapsedPressureTime / PRESSURE_DURATION, 0, 1);
   const criticalElapsed = Math.max(0, elapsedPressureTime - PRESSURE_DURATION);
-  // 15 秒后缓慢逼近安全极限，永远不会缩到 0。
+  // 压力值继续递进，但房间几何保持固定，不再驱动 buildRoom()。
   const criticalProgress = 1 - Math.exp(-criticalElapsed / CRITICAL_PRESSURE_TIME_CONSTANT);
-
-  // 远端墙与内部截面收缩；近端透视线外点保持宽阔并适度向外延长
-  currentRoomWidthFactor = THREE.MathUtils.lerp(
-    1,
-    ROOM_MIN_WIDTH_FACTOR,
-    pressureProgress
-  );
-  currentRoomHeightFactor = THREE.MathUtils.lerp(
-    1,
-    ROOM_MIN_HEIGHT_FACTOR,
-    pressureProgress
-  );
-  if (criticalElapsed > 0) {
-    currentRoomWidthFactor = THREE.MathUtils.lerp(
-      ROOM_MIN_WIDTH_FACTOR,
-      ROOM_CRITICAL_WIDTH_FACTOR,
-      criticalProgress
-    );
-    currentRoomHeightFactor = THREE.MathUtils.lerp(
-      ROOM_MIN_HEIGHT_FACTOR,
-      ROOM_CRITICAL_HEIGHT_FACTOR,
-      criticalProgress
-    );
-  }
-  currentPerspectiveLineExtension = THREE.MathUtils.lerp(
-    PERSPECTIVE_LINE_EXTENSION,
-    PERSPECTIVE_LINE_EXTENSION_MAX,
-    pressureProgress
-  );
-  buildRoom();
+  currentRoomWidthFactor = 1;
+  currentRoomHeightFactor = 1;
+  currentPerspectiveLineExtension = PERSPECTIVE_LINE_EXTENSION;
 
   cubeSceneElement.dataset.pressureProgress = pressureProgress.toFixed(3);
   cubeSceneElement.dataset.roomWidthFactor = currentRoomWidthFactor.toFixed(3);
@@ -1115,9 +1531,15 @@ function animateCubeScene(currentTime) {
   const deltaTime = Math.min((currentTime - previousFrameTime) / 1000, 0.05);
   previousFrameTime = currentTime;
   wallScrollProgress = (wallScrollProgress + WALL_SCROLL_SPEED * deltaTime) % 1;
-  chapter1WallMeshes[0].material.map.offset.set(wallScrollProgress, 0);
-  chapter1WallMeshes[1].material.map.offset.set((1 - wallScrollProgress) % 1, 0);
+  chapter1WallMeshes.forEach((mesh, index) => {
+    const offset = THREE.MathUtils.euclideanModulo(
+      WALL_SCROLL_OFFSET_DIRECTIONS[index] * wallScrollProgress,
+      1
+    );
+    mesh.material.map.offset.set(offset, 0);
+  });
   updatePressure(currentTime);
+  updateChapter1AudioVisualizer();
 
   if (currentTime >= nextCardSpawnTime) {
     createCard();
@@ -1154,7 +1576,7 @@ function exitChapterOne() {
   chapter1ExitPending = true;
 
   triggerSoundEvent(SOUND_EVENTS.escapeClick);
-  // 停止生成、压力增长、房间收缩、Hover 检测和音频递进
+  // 停止生成、压力增长、Hover 检测、频谱更新和音频递进。
   pressureSystemActive = false;
   cardSystemStarted = false;
   pointerIsInside = false;
@@ -2263,6 +2685,10 @@ function updateCharacterScatter(deltaTime, currentTime) {
     finalPhaseStartTime = currentTime;
     chapter2Element.dataset.phase = chapter2Phase;
     chapter2Element.dataset.scatterCount = String(collectedCharacterNodes.length);
+    if (!preAssessmentPresented) {
+      preAssessmentPresented = true;
+      openSelfAssessment("pre");
+    }
   }
 }
 
@@ -2392,6 +2818,7 @@ function updateChapter2Finale(currentTime) {
   const elapsed = currentTime - finalPhaseStartTime;
 
   if (chapter2Phase === "scatterComplete") {
+    if (!preAssessmentCompleted) return;
     if (elapsed >= POST_SCATTER_HOLD && finalBrainTextBatchComplete) {
       showBrainWindowClose(currentTime);
     }
@@ -2639,6 +3066,7 @@ chapter2Canvas.addEventListener("pointercancel", stopChapter2Drag);
 
 window.addEventListener("keydown", (event) => {
   if (currentState !== "chapter2") return;
+  if (event.target instanceof Element && event.target.closest(".self-assessment")) return;
   const controlKeys = [
     "KeyW",
     "KeyA",
@@ -4750,71 +5178,57 @@ puzzleStage.dataset.puzzleComplete = "false";
 const aiChatMessages = document.querySelector("#ai-chat-messages");
 const aiInput = document.querySelector("#ai-chat-input");
 const aiSendButton = document.querySelector("#ai-send-button");
-const aiCharacter = document.querySelector("#ai-character");
-const aiStatusBubble = document.querySelector(".ai-status-bubble");
-const aiCharacterArea = document.querySelector(".ai-character-area");
-const AI_CHARACTER_BUBBLE_GAP = 12;
-aiCharacterArea.style.setProperty("--ai-character-bubble-gap", `${AI_CHARACTER_BUBBLE_GAP}px`);
+const aiChatRoot = document.querySelector(".chapter4-ai");
+const aiChatWindow = document.querySelector(".ai-chat-window");
 const CHAT_ASSETS = Object.freeze({
   userAvatar: "./pic/forth/icon/user_icon.png",
   aiAvatar: "./pic/forth/icon/ai_icon.png",
 });
-const AI_ANIMATION_ASSETS = Object.freeze({
-  idle: Object.freeze([
-    "./pic/forth/IDLE/idle_1.png",
-    "./pic/forth/IDLE/idle_2.png",
-    "./pic/forth/IDLE/idle_3.png",
-  ]),
-  thinking: Object.freeze([
-    "./pic/forth/think/think_1.png",
-    "./pic/forth/think/think_2.png",
-    "./pic/forth/think/think_3.png",
-  ]),
-});
-const IDLE_FRAME_INTERVAL = 320;
-const THINK_FRAME_INTERVAL = 240;
-const AI_STATUS_TEXT = Object.freeze({
-  idle: "泥嚎丫，偶是本站雇佣的小助手，很高兴听到您的声音 ^^ ",
-  thinking: "等等，小主人，偶正在努力组织词语中：3 ",
-});
+const AI_CHAT_LAYOUT = {
+  chat: { x: 0.472, y: 0.657, width: 1, height: 1 },
+  input: { x: 0.352, y: 0.92, width: 0.633, height: 0.108 },
+  send: { x: 0.805, y: 0.925, scale: 1 },
+  window: { x: 0.509, y: 0.435, scale: 0.95 },
+};
+const AI_CHAT_SAFE_GAP = 0.02;
 const conversationMessages = [];
 let aiRequestPending = false;
 let AI_STATE = "idle";
-let aiAnimationTimer = null;
-let aiAnimationFrameIndex = 0;
-
-Object.values(AI_ANIMATION_ASSETS).flat().forEach(source => {
-  const image = new Image();
-  image.src = new URL(source, import.meta.url).href;
-});
-
-function stopAIAnimation() {
-  if (aiAnimationTimer !== null) window.clearInterval(aiAnimationTimer);
-  aiAnimationTimer = null;
-}
-
-function startFrameAnimation(frames, interval) {
-  stopAIAnimation();
-  aiAnimationFrameIndex = 0;
-  aiCharacter.src = new URL(frames[aiAnimationFrameIndex], import.meta.url).href;
-  aiAnimationTimer = window.setInterval(() => {
-    aiAnimationFrameIndex = (aiAnimationFrameIndex + 1) % frames.length;
-    aiCharacter.src = new URL(frames[aiAnimationFrameIndex], import.meta.url).href;
-  }, interval);
-}
 
 function setAIState(nextState) {
-  if (!Object.hasOwn(AI_ANIMATION_ASSETS, nextState)) return;
+  if (nextState !== "idle" && nextState !== "thinking") return;
   AI_STATE = nextState;
-  aiCharacter.dataset.aiState = nextState;
-  aiCharacter.alt = nextState === "thinking" ? "AI 思考中" : "AI 空闲中";
-  aiStatusBubble.textContent = AI_STATUS_TEXT[nextState];
-  aiStatusBubble.dataset.aiState = nextState;
-  startFrameAnimation(
-    AI_ANIMATION_ASSETS[nextState],
-    nextState === "thinking" ? THINK_FRAME_INTERVAL : IDLE_FRAME_INTERVAL
-  );
 }
+
+function updateAIChatLayout() {
+  const chatTop = THREE.MathUtils.clamp(
+    AI_CHAT_LAYOUT.chat.y - AI_CHAT_LAYOUT.chat.height / 2,
+    0,
+    1
+  );
+  const inputTop = THREE.MathUtils.clamp(
+    AI_CHAT_LAYOUT.input.y - AI_CHAT_LAYOUT.input.height / 2,
+    0,
+    1
+  );
+  const chatBottomEdge = THREE.MathUtils.clamp(inputTop - AI_CHAT_SAFE_GAP, chatTop, 1);
+  aiChatRoot.style.setProperty("--ai-window-x", `${AI_CHAT_LAYOUT.window.x * 100}%`);
+  aiChatRoot.style.setProperty("--ai-window-y", `${AI_CHAT_LAYOUT.window.y * 100}%`);
+  aiChatRoot.style.setProperty("--ai-window-scale", AI_CHAT_LAYOUT.window.scale);
+  aiChatWindow.style.setProperty("--ai-chat-x", `${AI_CHAT_LAYOUT.chat.x * 100}%`);
+  aiChatWindow.style.setProperty("--ai-chat-top", `${chatTop * 100}%`);
+  aiChatWindow.style.setProperty("--ai-chat-bottom", `${(1 - chatBottomEdge) * 100}%`);
+  aiChatWindow.style.setProperty("--ai-chat-width", `${AI_CHAT_LAYOUT.chat.width * 100}%`);
+  aiChatWindow.style.setProperty("--ai-input-x", `${AI_CHAT_LAYOUT.input.x * 100}%`);
+  aiChatWindow.style.setProperty("--ai-input-y", `${AI_CHAT_LAYOUT.input.y * 100}%`);
+  aiChatWindow.style.setProperty("--ai-input-width", `${AI_CHAT_LAYOUT.input.width * 100}%`);
+  aiChatWindow.style.setProperty("--ai-input-height", `${AI_CHAT_LAYOUT.input.height * 100}%`);
+  aiChatWindow.style.setProperty("--ai-send-x", `${AI_CHAT_LAYOUT.send.x * 100}%`);
+  aiChatWindow.style.setProperty("--ai-send-y", `${AI_CHAT_LAYOUT.send.y * 100}%`);
+  aiChatWindow.style.setProperty("--ai-send-scale", AI_CHAT_LAYOUT.send.scale);
+}
+
+updateAIChatLayout();
 
 function appendChatMessage(role, text, isError = false) {
   if (role !== "user" && role !== "assistant") return;
@@ -5393,6 +5807,9 @@ tetraHitTarget.addEventListener("pointerleave", () => {
 });
 tetraHitTarget.addEventListener("click", throwTetrahedron);
 tetraRoundReset.addEventListener("click", resetTetraRound);
+tetraSelector.addEventListener("tetra:all-complete", () => {
+  openSelfAssessment("post");
+});
 tetraEventReturn.addEventListener("click", completeTetraPlaceholderEvent);
 
 function animateTetraSelector(currentTime) {
@@ -6718,14 +7135,15 @@ window.breathingClockModule = Object.freeze({
   playBreathDing,
 });
 
-// 第四章老爷爷对话：独立模块，当前不接入正四面体事件映射。
+// 第四章老爷爷对话：由正四面体 Face 4 进入；视觉层与对话状态机彼此独立。
 const GRANDPA_ASSETS = Object.freeze({
-  grandpaFrames: Object.freeze([
-    "./pic/forth/touzi/man_01.png",
-    "./pic/forth/touzi/man_02.png",
-    "./pic/forth/touzi/man_03.png",
-  ]),
-  bgGifLoop: "./pic/forth/touzi/flower_2.gif",
+  background: "./pic/forth/touzi/park_bg.png",
+  cover: "./pic/forth/touzi/park_bush_mask.png",
+  dialogue: "./pic/forth/touzi/park_dialogue.png",
+  grandpaFrames: Object.freeze({
+    closed: "./pic/forth/touzi/park_man_01.png",
+    open: "./pic/forth/touzi/park_man_02.png",
+  }),
   audio: Object.freeze({
     l01: "./pic/forth/touzi/older/01.mp3",
     l02: "./pic/forth/touzi/older/02.mp3",
@@ -6741,34 +7159,36 @@ const GRANDPA_ASSETS = Object.freeze({
     b24: "./pic/forth/touzi/older/24.mp3",
   }),
 });
-const GRANDPA_LAYOUT = Object.freeze({
-  grandpa: Object.freeze({
-    x: 0.449,
-    y: 0.437,
-    scale: 0.57,
-  }),
-  gif: Object.freeze({
-    x: 0.329,
-    y: 0.550,
-    scale: 0.92,
-  }),
-});
-const GRANDPA_X = GRANDPA_LAYOUT.grandpa.x;
-const GRANDPA_Y = GRANDPA_LAYOUT.grandpa.y;
-const GRANDPA_SCALE = GRANDPA_LAYOUT.grandpa.scale;
-const GRANDPA_BG_X = GRANDPA_LAYOUT.gif.x;
-const GRANDPA_BG_Y = GRANDPA_LAYOUT.gif.y;
-const GRANDPA_BG_SCALE = GRANDPA_LAYOUT.gif.scale;
-const GRANDPA_BUBBLE_POSITION = Object.freeze({
-  x: 0.72,
-  y: 0.42,
-});
+const GRANDPA_VISUAL_LAYOUT = {
+  background: {
+    x: 0.5,
+    y: 0.5,
+    scale: 1,
+  },
+  cover: {
+    x: 0.5,
+    y: 0.5,
+    scale: 1,
+  },
+  grandpa: {
+    x: 0.5,
+    y: 0.561,
+    scale: 0.89,
+  },
+  bubble: {
+    x: 0.51,
+    y: 0.5,
+    scale: 1,
+    width: 0.89,
+  },
+};
 const GRANDPA_PHONE_LAYOUT = Object.freeze({
-  x: 0.16,
-  y: 0.24,
-  scale: 1,
+  x: 0.2,
+  y: 0.31,
+  scale: 1.5,
 });
 const GRANDPA_FRAME_INTERVAL = 140;
+const GRANDPA_TYPE_INTERVAL = 35;
 
 const GRANDPA_DIALOGUES = Object.freeze({
   main: Object.freeze([
@@ -6833,19 +7253,28 @@ const grandpaDialogueState = {
   currentLineId: null,
 };
 let grandpaFrameTimer = null;
+let grandpaTypeTimer = null;
+let grandpaTypeCharacters = [];
+let grandpaTypeIndex = 0;
 let grandpaClassificationToken = 0;
 let grandpaPhoneVisible = false;
 let grandpaPhoneScrollY = 0;
 
 function updateGrandpaLayout() {
-  grandpaDialogueModule.style.setProperty("--grandpa-x", `${GRANDPA_X * 100}%`);
-  grandpaDialogueModule.style.setProperty("--grandpa-y", `${GRANDPA_Y * 100}%`);
-  grandpaDialogueModule.style.setProperty("--grandpa-scale", String(GRANDPA_SCALE));
-  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-x", `${GRANDPA_BG_X * 100}%`);
-  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-y", `${GRANDPA_BG_Y * 100}%`);
-  grandpaDialogueModule.style.setProperty("--grandpa-bg-loop-scale", String(GRANDPA_BG_SCALE));
-  grandpaDialogueModule.style.setProperty("--grandpa-bubble-x", `${GRANDPA_BUBBLE_POSITION.x * 100}%`);
-  grandpaDialogueModule.style.setProperty("--grandpa-bubble-y", `${GRANDPA_BUBBLE_POSITION.y * 100}%`);
+  const { background, cover, grandpa, bubble } = GRANDPA_VISUAL_LAYOUT;
+  grandpaDialogueModule.style.setProperty("--grandpa-x", `${grandpa.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-y", `${grandpa.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-scale", String(grandpa.scale));
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-x", `${background.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-y", `${background.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bg-scale", String(background.scale));
+  grandpaDialogueModule.style.setProperty("--grandpa-cover-x", `${cover.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-cover-y", `${cover.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-cover-scale", String(cover.scale));
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-x", `${bubble.x * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-y", `${bubble.y * 100}%`);
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-scale", String(bubble.scale));
+  grandpaDialogueModule.style.setProperty("--grandpa-bubble-width", `${bubble.width * 100}vw`);
   grandpaDialogueModule.style.setProperty("--grandpa-phone-x", `${GRANDPA_PHONE_LAYOUT.x * 100}%`);
   grandpaDialogueModule.style.setProperty("--grandpa-phone-y", `${GRANDPA_PHONE_LAYOUT.y * 100}%`);
   grandpaDialogueModule.style.setProperty("--grandpa-phone-scale", String(GRANDPA_PHONE_LAYOUT.scale));
@@ -6853,13 +7282,18 @@ function updateGrandpaLayout() {
 
 updateGrandpaLayout();
 
-GRANDPA_ASSETS.grandpaFrames.forEach(src => {
+[
+  GRANDPA_ASSETS.background,
+  GRANDPA_ASSETS.cover,
+  GRANDPA_ASSETS.dialogue,
+  ...Object.values(GRANDPA_ASSETS.grandpaFrames),
+].forEach(src => {
   const image = new Image();
   image.src = src;
 });
 
 function setGrandpaIdleFrame() {
-  grandpaSpriteImage.src = GRANDPA_ASSETS.grandpaFrames[0];
+  grandpaSpriteImage.src = GRANDPA_ASSETS.grandpaFrames.closed;
 }
 
 function stopGrandpaTalkingAnimation() {
@@ -6870,11 +7304,42 @@ function stopGrandpaTalkingAnimation() {
 
 function startGrandpaTalkingAnimation() {
   stopGrandpaTalkingAnimation();
+  const frames = [
+    GRANDPA_ASSETS.grandpaFrames.closed,
+    GRANDPA_ASSETS.grandpaFrames.open,
+  ];
   let frameIndex = 0;
   grandpaFrameTimer = window.setInterval(() => {
-    frameIndex = (frameIndex + 1) % GRANDPA_ASSETS.grandpaFrames.length;
-    grandpaSpriteImage.src = GRANDPA_ASSETS.grandpaFrames[frameIndex];
+    frameIndex = (frameIndex + 1) % frames.length;
+    grandpaSpriteImage.src = frames[frameIndex];
   }, GRANDPA_FRAME_INTERVAL);
+}
+
+function stopGrandpaTypewriter() {
+  if (grandpaTypeTimer !== null) window.clearInterval(grandpaTypeTimer);
+  grandpaTypeTimer = null;
+  grandpaTypeCharacters = [];
+  grandpaTypeIndex = 0;
+}
+
+function completeGrandpaTypewriter() {
+  if (grandpaTypeCharacters.length > 0) {
+    grandpaSpeechBubble.textContent = grandpaTypeCharacters.join("");
+  }
+  stopGrandpaTypewriter();
+}
+
+function startGrandpaTypewriter(text) {
+  stopGrandpaTypewriter();
+  grandpaTypeCharacters = Array.from(String(text || ""));
+  grandpaTypeIndex = 0;
+  grandpaSpeechBubble.textContent = "";
+  if (grandpaTypeCharacters.length === 0) return;
+  grandpaTypeTimer = window.setInterval(() => {
+    grandpaSpeechBubble.textContent += grandpaTypeCharacters[grandpaTypeIndex] || "";
+    grandpaTypeIndex += 1;
+    if (grandpaTypeIndex >= grandpaTypeCharacters.length) stopGrandpaTypewriter();
+  }, GRANDPA_TYPE_INTERVAL);
 }
 
 function stopGrandpaAudio() {
@@ -6930,6 +7395,7 @@ function resetGrandpaDialogue() {
   grandpaClassificationToken += 1;
   stopGrandpaAudio();
   stopGrandpaTalkingAnimation();
+  stopGrandpaTypewriter();
   grandpaDialogueState.phase = "main";
   grandpaDialogueState.mainIndex = -1;
   grandpaDialogueState.branch = null;
@@ -6948,6 +7414,7 @@ function resetGrandpaDialogue() {
 function finishGrandpaLine(audioEnded = false) {
   if (!grandpaDialogueState.speaking) return;
   const completedLineId = grandpaDialogueState.currentLineId;
+  completeGrandpaTypewriter();
   grandpaDialogueState.speaking = false;
   grandpaDialogueState.currentLineId = null;
   stopGrandpaTalkingAnimation();
@@ -6981,13 +7448,14 @@ function playGrandpaLine(line) {
   grandpaDialogueState.speaking = true;
   grandpaDialogueState.currentLineId = line.id;
   grandpaSprite.disabled = true;
-  grandpaSpeechBubble.textContent = line.text;
+  startGrandpaTypewriter(line.text);
   grandpaDialogueAudio.src = line.audio;
   grandpaDialogueAudio.currentTime = 0;
   startGrandpaTalkingAnimation();
   const playAttempt = grandpaDialogueAudio.play();
   if (playAttempt) playAttempt.catch(error => {
     console.warn(`[grandpa dialogue] audio ${line.id} unavailable`, error);
+    completeGrandpaTypewriter();
     finishGrandpaLine();
   });
 }
@@ -7100,7 +7568,10 @@ function closeGrandpaDialogue() {
 
 grandpaDialogueAudio.addEventListener("ended", () => finishGrandpaLine(true));
 grandpaDialogueAudio.addEventListener("error", () => {
-  if (grandpaDialogueState.speaking) finishGrandpaLine();
+  if (grandpaDialogueState.speaking) {
+    completeGrandpaTypewriter();
+    finishGrandpaLine();
+  }
 });
 grandpaPhonePanel.addEventListener("transitionend", finishGrandpaPhoneTransition);
 grandpaPhoneMask.addEventListener("wheel", scrollGrandpaPhone, { passive: false });

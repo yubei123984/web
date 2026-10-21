@@ -9,7 +9,7 @@
   <body>
     <main class="page" data-state="idle" data-entry="pending">
       <section class="experience-entry" aria-label="进入FOMO体验">
-        <button class="experience-entry-button" type="button">只是一个平常的午后</button>
+        <button class="experience-entry-button" type="button">你只是像往常一样打开了手机</button>
       </section>
       <!-- 手机内容区域 -->
       <section class="phone-screen" aria-label="手机内容区域">
@@ -47,6 +47,9 @@
       <!-- Three.js 黑白线稿立方体空间 -->
       <section class="cube-scene" aria-label="黑白线稿立方体空间" aria-hidden="true">
         <canvas id="cube-canvas"></canvas>
+        <div class="chapter1-audio-visualizer" aria-hidden="true">
+          <div class="chapter1-audio-visualizer-bars"></div>
+        </div>
         <!-- 与远端门绑定的第一章出口 -->
         <button class="escape-button" type="button" aria-hidden="true" disabled>
           逃
@@ -111,6 +114,30 @@
 
       </section>
 
+      <section
+        class="self-assessment self-assessment--pre"
+        data-assessment="pre"
+        aria-hidden="true"
+      >
+        <div class="self-assessment-card" role="dialog" aria-modal="true" aria-labelledby="pre-assessment-title">
+          <div class="self-assessment-heading">
+            <p class="self-assessment-kicker">SELF CHECK-IN · BEFORE</p>
+            <h2 id="pre-assessment-title">先看看你最近的状态</h2>
+
+          </div>
+          <form class="self-assessment-form" data-assessment-form="pre" novalidate>
+            <div class="self-assessment-question-scroll">
+              <div class="self-assessment-questions"></div>
+              <p class="self-assessment-scale-note">0=从不，1=偶尔，2=有时，3=经常，4=几乎总是</p>
+            </div>
+            <div class="self-assessment-footer">
+              <p class="self-assessment-progress" aria-live="polite">请完成全部 5 题</p>
+              <button class="self-assessment-submit" type="submit" disabled>继续</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <section class="chapter2-complete" aria-live="polite" aria-hidden="true">
         <p>CHAPTER 2 COMPLETE</p>
       </section>
@@ -138,6 +165,11 @@
       </section>
       <!-- 第四章：仅布局灰盒，输入控件禁用，不接任何功能。 -->
       <section class="chapter4-scene" aria-label="第四章布局灰盒" aria-hidden="true">
+        <div class="chapter4-global-background" aria-hidden="true">
+          <div class="chapter4-global-art-stage">
+            <img src="./pic/forth/chapter4_bg.png" alt="" draggable="false" />
+          </div>
+        </div>
         <div class="chapter4-left">
           <section class="chapter4-box chapter4-puzzle" aria-label="生活组件拼图">
             <div class="puzzle-content">
@@ -220,26 +252,27 @@
           </div>
         </div>
         <aside class="chapter4-ai" aria-label="AI 对话区域">
-          <section class="chapter4-box ai-character-area" aria-label="AI 角色状态">
-            <img id="ai-character" class="ai-character" src="./pic/forth/IDLE/idle_1.png" alt="AI 空闲中" />
-            <p class="ai-status-bubble" aria-live="polite">泥嚎丫，偶是本站雇佣的小助手，很高兴听到您的声音 ^ ^ </p>
-          </section>
-          <section
-            id="ai-chat-messages"
-            class="chapter4-box chapter4-chat"
-            aria-label="AI 聊天记录"
-            aria-live="polite"
-          ></section>
-          <div class="chapter4-input">
-            <input
-              id="ai-chat-input"
-              class="ai-chat-input"
-              type="text"
-              placeholder="INPUT"
-              aria-label="输入消息"
-              autocomplete="off"
-            />
-            <button id="ai-send-button" class="ai-send-button" type="button">Send</button>
+          <div class="ai-chat-window">
+            <div class="chapter4-ai-background" aria-hidden="true">
+              <img src="./pic/forth/ai_bg.png" alt="" draggable="false" />
+            </div>
+            <section
+              id="ai-chat-messages"
+              class="chapter4-chat"
+              aria-label="AI 聊天记录"
+              aria-live="polite"
+            ></section>
+            <div class="chapter4-input">
+              <input
+                id="ai-chat-input"
+                class="ai-chat-input"
+                type="text"
+                placeholder="INPUT"
+                aria-label="输入消息"
+                autocomplete="off"
+              />
+              <button id="ai-send-button" class="ai-send-button" type="button">Send</button>
+            </div>
           </div>
         </aside>
         <section class="chapter4-tetra-selector" aria-label="正四面体投掷选择器">
@@ -259,6 +292,16 @@
             <button class="tetra-event-return" type="button">完成并返回</button>
           </div>
         </section>
+        <div class="chapter4-label-layer" aria-hidden="true">
+          <div class="chapter4-label-art-stage">
+            <span class="chapter4-element-label" data-label="puzzle"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+            <span class="chapter4-element-label" data-label="music"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+            <span class="chapter4-element-label" data-label="letter"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+            <span class="chapter4-element-label" data-label="ai"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+            <span class="chapter4-element-label" data-label="tetra"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+            <span class="chapter4-element-label" data-label="plant"><img src="./pic/forth/chapter4_word.png" alt="" draggable="false" /></span>
+          </div>
+        </div>
         <section class="tetris-module" aria-label="俄罗斯方块" aria-hidden="true" tabindex="-1">
           <div class="tetris-machine-scene">
             <div class="tetris-machine-column">
@@ -403,16 +446,23 @@
         </section>
         <section class="grandpa-dialogue-module" aria-label="老爷爷对话模块" aria-hidden="true" tabindex="-1">
           <div class="grandpa-dialogue-scene">
-            <div class="grandpa-bg-layer" aria-hidden="true">
-              <img class="grandpa-bg-loop" src="./pic/forth/touzi/flower_2.gif" alt="" draggable="false" />
+            <div class="grandpa-background-layer" aria-hidden="true">
+              <img class="grandpa-background-image" src="./pic/forth/touzi/park_bg.png" alt="" draggable="false" />
             </div>
-            <button class="grandpa-sprite" type="button" aria-label="点击老爷爷继续对话">
-              <img src="./pic/forth/touzi/man_01.png" alt="老爷爷" draggable="false" />
-            </button>
-            <p class="grandpa-speech-bubble" aria-live="polite">点击左下花丛，让故事开始。</p>
+            <div class="grandpa-cover-layer" aria-hidden="true">
+              <img class="grandpa-cover-image" src="./pic/forth/touzi/park_bush_mask.png" alt="" draggable="false" />
+            </div>
+            <div class="grandpa-character-layer">
+              <button class="grandpa-sprite" type="button" aria-label="点击老爷爷继续对话">
+                <img class="grandpa-frame-image" src="./pic/forth/touzi/park_man_01.png" alt="老爷爷" draggable="false" />
+              </button>
+            </div>
+            <div class="grandpa-speech-layer">
+              <img class="grandpa-speech-art" src="./pic/forth/touzi/park_dialogue.png" alt="" draggable="false" />
+              <p class="grandpa-speech-bubble" aria-live="polite">点击老爷爷，听听他想说什么。</p>
+            </div>
             <div class="grandpa-phone-panel" aria-label="手机搜索结果" aria-hidden="true">
               <div class="grandpa-phone-frame">
-                <img class="grandpa-phone-frame-image" src="./pic/forth/touzi/phone1.png" alt="" draggable="false" />
                 <div class="grandpa-phone-mask" tabindex="0" aria-label="滚动查看手机内容">
                   <img class="grandpa-phone-scroll-content" src="./pic/forth/touzi/phone.png" alt="手机中的搜索结果" draggable="false" />
                 </div>
@@ -440,6 +490,76 @@
                 <span class="letter-page-count" aria-live="polite">1 / 4</span>
               </footer>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="self-assessment self-assessment--post"
+        data-assessment="post"
+        aria-hidden="true"
+      >
+        <div class="self-assessment-card" role="dialog" aria-modal="true" aria-labelledby="post-assessment-title">
+          <div class="self-assessment-heading">
+            <p class="self-assessment-kicker">SELF CHECK-IN · AFTER</p>
+            <h2 id="post-assessment-title">现在，再看一次自己的状态</h2>
+
+          </div>
+          <form class="self-assessment-form" data-assessment-form="post" novalidate>
+            <div class="self-assessment-question-scroll">
+              <div class="self-assessment-questions"></div>
+              <p class="self-assessment-scale-note">0=完全没有，1=有一点，2=一般，3=比较明显，4=非常明显</p>
+            </div>
+            <div class="self-assessment-footer">
+              <p class="self-assessment-progress" aria-live="polite">请完成全部 5 题</p>
+              <button class="self-assessment-submit" type="submit" disabled>继续</button>
+            </div>
+          </form>
+          <div class="self-assessment-feedback" aria-live="polite" hidden>
+            <figure class="self-assessment-result-chart">
+              <svg
+                class="self-assessment-result-svg"
+                viewBox="0 0 360 220"
+                role="img"
+                aria-labelledby="self-assessment-result-title"
+              >
+                <title id="self-assessment-result-title">第一次测试与第二次测试的总分变化</title>
+                <g class="self-assessment-chart-grid" aria-hidden="true">
+                  <line x1="54" y1="170" x2="330" y2="170"></line>
+                  <line x1="54" y1="132.5" x2="330" y2="132.5"></line>
+                  <line x1="54" y1="95" x2="330" y2="95"></line>
+                  <line x1="54" y1="57.5" x2="330" y2="57.5"></line>
+                  <line x1="54" y1="20" x2="330" y2="20"></line>
+                </g>
+                <g class="self-assessment-chart-axes" aria-hidden="true">
+                  <line x1="54" y1="20" x2="54" y2="170"></line>
+                  <line x1="54" y1="170" x2="330" y2="170"></line>
+                </g>
+                <g class="self-assessment-chart-ticks" aria-hidden="true">
+                  <text x="43" y="174">0</text>
+                  <text x="43" y="136.5">5</text>
+                  <text x="43" y="99">10</text>
+                  <text x="43" y="61.5">15</text>
+                  <text x="43" y="24">20</text>
+                  <text x="104" y="202">第一次测试</text>
+                  <text x="280" y="202">第二次测试</text>
+                </g>
+                <line class="self-assessment-chart-line" x1="104" y1="170" x2="280" y2="170"></line>
+                <circle class="self-assessment-chart-point self-assessment-chart-point--pre" cx="104" cy="170" r="5"></circle>
+                <circle class="self-assessment-chart-point self-assessment-chart-point--post" cx="280" cy="170" r="5"></circle>
+                <text class="self-assessment-chart-score self-assessment-chart-score--pre" x="104" y="158">0</text>
+                <text class="self-assessment-chart-score self-assessment-chart-score--post" x="280" y="158">0</text>
+              </svg>
+              <figcaption class="self-assessment-result-summary">
+                <span data-assessment-result="pre">前测总分：0</span>
+                <span data-assessment-result="post">后测总分：0</span>
+                <span data-assessment-result="change">变化：0</span>
+              </figcaption>
+            </figure>
+            <p class="self-assessment-feedback-copy"></p>
+            <div class="self-assessment-result-actions">
+              <button class="self-assessment-finish" type="button">完成体验</button>
+            </div>
           </div>
         </div>
       </section>
